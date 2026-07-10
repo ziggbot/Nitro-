@@ -15,8 +15,10 @@ permissions:
   pages: write
   id-token: write
 
+# Per-ref group: a build-only run on another branch must not cancel the
+# default branch's deploy run (only the default branch deploys to Pages).
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
