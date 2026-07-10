@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 56" width="96" height="56">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#e2e8f4"/>
+      <stop offset="1" stop-color="#a6b2c8"/>
+    </linearGradient>
+  </defs>
+  <!-- exposed wheels, F1 style -->
+  <rect x="16" y="1" width="17" height="11" rx="4" fill="#14161c"/>
+  <rect x="16" y="44" width="17" height="11" rx="4" fill="#14161c"/>
+  <rect x="62" y="4" width="14" height="9" rx="3.5" fill="#14161c"/>
+  <rect x="62" y="43" width="14" height="9" rx="3.5" fill="#14161c"/>
+  <!-- axles -->
+  <rect x="20" y="10" width="9" height="36" rx="2" fill="#3c4658"/>
+  <rect x="64" y="11" width="7" height="34" rx="2" fill="#3c4658"/>
+  <!-- rear wing -->
+  <rect x="4" y="8" width="8" height="40" rx="2" fill="#2c3648"/>
+  <rect x="10" y="14" width="4" height="28" rx="1.5" fill="#4c5a72"/>
+  <!-- neon rim glow around fuselage -->
+  <path d="M12 28 L18 22 L40 19 Q52 18 62 22 L88 25 Q94 26 94 28 Q94 30 88 31 L62 34 Q52 38 40 37 L18 34 Z"
+        fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="4" stroke-linejoin="round"/>
+  <!-- narrow fuselage -->
+  <path d="M12 28 L18 20 Q30 16 42 17 L58 20 Q64 22 72 24 L90 26 Q94 27 94 28 Q94 29 90 30 L72 32 Q64 34 58 36 L42 39 Q30 40 18 36 Z"
+        fill="url(#body)"/>
+  <!-- cockpit -->
+  <ellipse cx="44" cy="28" rx="9" ry="6" fill="#0c1626"/>
+  <ellipse cx="46" cy="28" rx="5" ry="3.6" fill="#234064"/>
+  <!-- nose cone accent -->
+  <path d="M78 25 L90 26 Q94 27 94 28 Q94 29 90 30 L78 31 Z" fill="#ffffff" opacity="0.85"/>
+  <!-- front wing -->
+  <rect x="84" y="10" width="5" height="36" rx="2" fill="#2c3648"/>
+</svg>

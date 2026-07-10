@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 56" width="96" height="56">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#dfe6f2"/>
+      <stop offset="1" stop-color="#aab6cc"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0c1626"/>
+      <stop offset="1" stop-color="#233c5c"/>
+    </linearGradient>
+  </defs>
+  <!-- wheels -->
+  <rect x="12" y="2" width="16" height="9" rx="3" fill="#14161c"/>
+  <rect x="12" y="45" width="16" height="9" rx="3" fill="#14161c"/>
+  <rect x="64" y="3" width="15" height="8" rx="3" fill="#14161c"/>
+  <rect x="64" y="45" width="15" height="8" rx="3" fill="#14161c"/>
+  <!-- neon rim glow -->
+  <path d="M8 28 L14 12 Q16 7 24 7 L66 9 Q84 12 92 24 L93 28 L92 32 Q84 44 66 47 L24 49 Q16 49 14 44 Z"
+        fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="4" stroke-linejoin="round"/>
+  <!-- body -->
+  <path d="M8 28 L14 12 Q16 7 24 7 L66 9 Q84 12 92 24 L93 28 L92 32 Q84 44 66 47 L24 49 Q16 49 14 44 Z"
+        fill="url(#body)"/>
+  <!-- hood vents -->
+  <rect x="70" y="22" width="12" height="2.5" rx="1" fill="#7c8aa4"/>
+  <rect x="70" y="31" width="12" height="2.5" rx="1" fill="#7c8aa4"/>
+  <!-- cockpit -->
+  <path d="M34 14 L54 16 Q60 22 60 28 Q60 34 54 40 L34 42 Q30 34 30 28 Q30 22 34 14 Z" fill="url(#glass)"/>
+  <!-- rear wing -->
+  <rect x="6" y="10" width="7" height="36" rx="2.5" fill="#3c4658"/>
+  <!-- center stripe -->
+  <rect x="14" y="26.4" width="76" height="3.2" rx="1.6" fill="#ffffff" opacity="0.85"/>
+  <!-- headlights -->
+  <circle cx="88" cy="22" r="2.4" fill="#fffbe0"/>
+  <circle cx="88" cy="34" r="2.4" fill="#fffbe0"/>
+</svg>
