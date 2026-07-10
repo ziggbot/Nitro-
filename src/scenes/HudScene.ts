@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { ArenaDef } from '../config/arenas';
 import { PALETTE, hexToCss } from '../config/palette';
 import { MIN_TRAIL } from '../game/CarSim';
-import { bodyStyle, makePanel, FONTS } from '../ui/widgets';
+import { bodyStyle, makePanel } from '../ui/widgets';
 import type { ArenaScene } from './ArenaScene';
 
 interface FeedEntry {
@@ -10,7 +10,12 @@ interface FeedEntry {
   expiresAt: number;
 }
 
-/** Overlay scene: fuel gauge, score/rank, leaderboard, kill feed, minimap. */
+/**
+ * Overlay scene: fuel gauge, score line, leaderboard, kill feed, minimap.
+ * Everything is small, corner-anchored and translucent so the car stays
+ * visible even when the camera clamps at arena walls and the car slides
+ * toward a screen edge.
+ */
 export class HudScene extends Phaser.Scene {
   private arenaScene!: ArenaScene;
   private arenaDef!: ArenaDef;
@@ -18,12 +23,11 @@ export class HudScene extends Phaser.Scene {
   private fuelBar!: Phaser.GameObjects.Rectangle;
   private fuelLabel!: Phaser.GameObjects.Text;
   private trailBar!: Phaser.GameObjects.Rectangle;
-  private scoreText!: Phaser.GameObjects.Text;
-  private rankText!: Phaser.GameObjects.Text;
+  private scoreLine!: Phaser.GameObjects.Text;
   private boardText!: Phaser.GameObjects.Text;
   private feed: FeedEntry[] = [];
   private minimap!: Phaser.GameObjects.Graphics;
-  private minimapSize = 130;
+  private minimapSize = 110;
 
   constructor() {
     super('hud');
@@ -38,38 +42,29 @@ export class HudScene extends Phaser.Scene {
     this.arenaScene = this.scene.get('arena') as ArenaScene;
     const w = this.scale.width;
 
-    // --- Top-left: fuel + trail bars. ---
-    makePanel(this, 120, 44, 220, 68, 0.6);
-    this.add.text(24, 20, '⛽ FUEL', bodyStyle(12, hexToCss(PALETTE.uiDim))).setDepth(1);
-    this.add.rectangle(120, 44, 196, 12, 0x0a1020).setStrokeStyle(1, PALETTE.uiPanelStroke);
-    this.fuelBar = this.add.rectangle(24, 44, 192, 8, PALETTE.lime).setOrigin(0, 0.5);
-    this.fuelLabel = this.add.text(190, 20, '', bodyStyle(12));
+    // --- Top-left: fuel + trail bars + score line, one compact panel. ---
+    makePanel(this, 116, 52, 212, 88, 0.45);
+    this.add.text(20, 16, '⛽ FUEL', bodyStyle(10, hexToCss(PALETTE.uiDim)));
+    this.add.rectangle(116, 34, 192, 10, 0x0a1020, 0.7).setStrokeStyle(1, PALETTE.uiPanelStroke);
+    this.fuelBar = this.add.rectangle(22, 34, 188, 6, PALETTE.lime).setOrigin(0, 0.5);
+    this.fuelLabel = this.add.text(178, 16, '', bodyStyle(10, hexToCss(PALETTE.uiDim)));
 
-    this.add.text(24, 56, '🔥 NITRO TRAIL (boost burns it)', bodyStyle(11, hexToCss(PALETTE.uiDim)));
-    this.add.rectangle(120, 72, 196, 10, 0x0a1020).setStrokeStyle(1, PALETTE.uiPanelStroke);
-    this.trailBar = this.add.rectangle(24, 72, 10, 6, PALETTE.amber).setOrigin(0, 0.5);
+    this.add.text(20, 44, '🔥 NITRO TRAIL (boost burns it)', bodyStyle(9, hexToCss(PALETTE.uiDim)));
+    this.add.rectangle(116, 61, 192, 8, 0x0a1020, 0.7).setStrokeStyle(1, PALETTE.uiPanelStroke);
+    this.trailBar = this.add.rectangle(22, 61, 8, 5, PALETTE.amber).setOrigin(0, 0.5);
 
-    // --- Top-center: score + rank. ---
-    this.scoreText = this.add
-      .text(w / 2, 18, 'SCORE 0', { fontFamily: FONTS.title, fontSize: '26px', color: hexToCss(PALETTE.cyan), stroke: '#000', strokeThickness: 4 })
-      .setOrigin(0.5, 0);
-    this.rankText = this.add
-      .text(w / 2, 48, '', bodyStyle(14, hexToCss(PALETTE.uiDim)))
-      .setOrigin(0.5, 0);
+    this.scoreLine = this.add.text(20, 74, '', bodyStyle(13, hexToCss(PALETTE.cyan)));
 
-    // --- Top-right: round leaderboard. ---
-    makePanel(this, w - 110, 84, 200, 148, 0.6);
+    // --- Top-right: compact round leaderboard. ---
+    makePanel(this, w - 88, 66, 160, 112, 0.4);
     this.add
-      .text(w - 200, 20, this.arenaDef.night ? '🌙 ' + this.arenaDef.name : this.arenaDef.name, bodyStyle(12, hexToCss(PALETTE.gold)))
+      .text(w - 160, 16, (this.arenaDef.night ? '🌙 ' : '') + this.arenaDef.name, bodyStyle(10, hexToCss(PALETTE.gold)))
       .setOrigin(0, 0);
-    this.boardText = this.add.text(w - 200, 38, '', {
-      ...bodyStyle(13),
-      lineSpacing: 5,
-    });
+    this.boardText = this.add.text(w - 160, 32, '', { ...bodyStyle(11), lineSpacing: 4 });
 
     // --- Bottom-right: minimap. ---
     const ms = this.minimapSize;
-    makePanel(this, this.scale.width - ms / 2 - 16, this.scale.height - ms / 2 - 16, ms + 8, ms + 8, 0.55);
+    makePanel(this, this.scale.width - ms / 2 - 14, this.scale.height - ms / 2 - 14, ms + 6, ms + 6, 0.4);
     this.minimap = this.add.graphics();
 
     // Kill feed events from the arena.
@@ -78,21 +73,22 @@ export class HudScene extends Phaser.Scene {
       this.arenaScene.events.off('killfeed', this.onKill, this);
     });
 
-    // Controls hint, fades out.
+    // Controls hint, fades out quickly.
     const hint = this.add
-      .text(w / 2, this.scale.height - 40, 'Steer with mouse/touch or WASD — hold click/SPACE to boost', bodyStyle(14, hexToCss(PALETTE.uiDim)))
-      .setOrigin(0.5);
-    this.tweens.add({ targets: hint, alpha: 0, delay: 6000, duration: 1200 });
+      .text(w / 2, this.scale.height - 32, 'Steer: mouse/touch or WASD · Boost: hold click/SPACE', bodyStyle(12, hexToCss(PALETTE.uiDim)))
+      .setOrigin(0.5)
+      .setAlpha(0.8);
+    this.tweens.add({ targets: hint, alpha: 0, delay: 4000, duration: 1000 });
   }
 
   private onKill(e: { killer: string; victim: string }): void {
-    const entry = this.add.text(24, 0, `${e.killer} wrecked ${e.victim}`, {
-      ...bodyStyle(13, hexToCss(PALETTE.magenta)),
+    const entry = this.add.text(20, 0, `${e.killer} wrecked ${e.victim}`, {
+      ...bodyStyle(11, hexToCss(PALETTE.magenta)),
       stroke: '#000',
-      strokeThickness: 3,
+      strokeThickness: 2,
     });
-    this.feed.unshift({ text: entry, expiresAt: this.time.now + 5000 });
-    if (this.feed.length > 4) this.feed.pop()?.text.destroy();
+    this.feed.unshift({ text: entry, expiresAt: this.time.now + 4500 });
+    if (this.feed.length > 3) this.feed.pop()?.text.destroy();
   }
 
   update(time: number): void {
@@ -101,7 +97,7 @@ export class HudScene extends Phaser.Scene {
 
     // Fuel.
     const frac = Phaser.Math.Clamp(player.fuel / player.stats.tank, 0, 1);
-    this.fuelBar.width = 192 * frac;
+    this.fuelBar.width = 188 * frac;
     this.fuelBar.fillColor = frac < 0.2 ? PALETTE.red : frac < 0.45 ? PALETTE.amber : PALETTE.lime;
     if (frac < 0.2) this.fuelBar.setAlpha(0.5 + 0.5 * Math.abs(Math.sin(time / 120)));
     else this.fuelBar.setAlpha(1);
@@ -109,12 +105,15 @@ export class HudScene extends Phaser.Scene {
 
     // Trail (boost meter).
     const trailFrac = Phaser.Math.Clamp((player.trailLimit - MIN_TRAIL) / 150, 0, 1);
-    this.trailBar.width = Math.max(2, 192 * trailFrac);
+    this.trailBar.width = Math.max(2, 188 * trailFrac);
 
-    // Score + rank.
-    this.scoreText.setText(`SCORE ${player.score}`);
+    // Score line.
     const alive = this.arenaScene.cars.filter((c) => c.alive).length;
-    this.rankText.setText(player.alive ? `#${player.rank} of ${alive}  ·  ${player.kills} wrecks` : 'WRECKED');
+    this.scoreLine.setText(
+      player.alive
+        ? `Score ${player.score}  ·  #${player.rank}/${alive}  ·  ${player.kills} wrecks`
+        : 'WRECKED',
+    );
 
     // Leaderboard top 5.
     const top = [...this.arenaScene.cars]
@@ -125,7 +124,7 @@ export class HudScene extends Phaser.Scene {
       top
         .map((c, i) => {
           const marker = c === player ? '▶' : ' ';
-          return `${marker}${i + 1}. ${c.driver.name.slice(0, 14).padEnd(14)} ${c.score}`;
+          return `${marker}${i + 1}. ${c.driver.name.slice(0, 11).padEnd(11)} ${c.score}`;
         })
         .join('\n'),
     );
@@ -133,7 +132,7 @@ export class HudScene extends Phaser.Scene {
     // Kill feed positions + expiry.
     for (let i = this.feed.length - 1; i >= 0; i--) {
       const e = this.feed[i];
-      e.text.setY(96 + i * 20);
+      e.text.setY(102 + i * 16);
       if (time > e.expiresAt) {
         e.text.destroy();
         this.feed.splice(i, 1);
@@ -146,19 +145,17 @@ export class HudScene extends Phaser.Scene {
   private drawMinimap(): void {
     const g = this.minimap;
     const ms = this.minimapSize;
-    const x0 = this.scale.width - ms - 16 - 2;
-    const y0 = this.scale.height - ms - 16 - 2;
-    const scale = ms / this.arenaScene.cars.length; // placeholder, replaced below
-    void scale;
+    const x0 = this.scale.width - ms - 14 - 2;
+    const y0 = this.scale.height - ms - 14 - 2;
     const worldScale = ms / (this.arenaDef.size || 4000);
 
     g.clear();
-    g.fillStyle(0x0a1020, 0.4).fillRect(x0, y0, ms, ms);
+    g.fillStyle(0x0a1020, 0.35).fillRect(x0, y0, ms, ms);
     for (const car of this.arenaScene.cars) {
       if (!car.alive) continue;
       const isPlayer = car.driver.isPlayer;
       g.fillStyle(isPlayer ? PALETTE.cyan : PALETTE.magenta, 1);
-      const r = isPlayer ? 3.5 : 2;
+      const r = isPlayer ? 3 : 1.8;
       g.fillCircle(x0 + car.x * worldScale, y0 + car.y * worldScale, r);
     }
   }

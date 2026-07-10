@@ -40,6 +40,9 @@ jobs:
 
   deploy:
     needs: build
+    # The github-pages environment only accepts deployments from the repo's
+    # default branch; other branches run build/tests only and stay green.
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages

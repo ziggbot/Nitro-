@@ -17,7 +17,7 @@ export const CAR_CLASSES: CarClassDef[] = [
     name: 'Sports Car',
     tagline: 'The balanced all-rounder',
     unlockLevel: 1,
-    base: { topSpeed: 340, accel: 420, traction: 0.12, turnRate: 3.4, tank: 100, armor: 2 },
+    base: { topSpeed: 272, accel: 420, traction: 0.12, turnRate: 3.4, tank: 100, armor: 2 },
     texture: 'car-sports',
   },
   {
@@ -25,7 +25,7 @@ export const CAR_CLASSES: CarClassDef[] = [
     name: 'Race Car',
     tagline: 'Blistering speed, fragile shell',
     unlockLevel: 4,
-    base: { topSpeed: 400, accel: 500, traction: 0.09, turnRate: 3.1, tank: 85, armor: 1 },
+    base: { topSpeed: 320, accel: 500, traction: 0.09, turnRate: 3.1, tank: 85, armor: 1 },
     texture: 'car-racer',
   },
   {
@@ -33,7 +33,7 @@ export const CAR_CLASSES: CarClassDef[] = [
     name: 'Turbo Buggy',
     tagline: 'Grips anything, shrugs off hits',
     unlockLevel: 7,
-    base: { topSpeed: 310, accel: 380, traction: 0.17, turnRate: 3.8, tank: 115, armor: 3 },
+    base: { topSpeed: 248, accel: 380, traction: 0.17, turnRate: 3.8, tank: 115, armor: 3 },
     texture: 'car-buggy',
   },
 ];
