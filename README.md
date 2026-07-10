@@ -1,5 +1,7 @@
 # NITRO.IO 🏎️🔥
 
+**▶ Play it now: https://ziggbot.github.io/Nitro-/**
+
 A modern arena driving game — a tribute to **Nitro** (Psygnosis, 1990, Amiga) fused with the
 grow-and-survive gameplay of **snake.io**.
 
@@ -45,7 +47,8 @@ node scripts/smoke.mjs  # headless-browser smoke test against the preview server
 ```
 
 Built with [Phaser 3](https://phaser.io), TypeScript and Vite. Deployed to GitHub Pages by
-`.github/workflows/deploy.yml` on pushes to `main`.
+`.github/workflows/deploy.yml` on pushes to `main` or the default branch (the `github-pages`
+environment only accepts deployments from the repo's default branch).
 
 ## Architecture notes
 
