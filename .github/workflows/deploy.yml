@@ -1,8 +1,13 @@
 name: Build & Deploy to GitHub Pages
 
+# Note: the repo's default branch is claude/nitro-game-modernized-6ttvsm
+# (the repo was empty when the project started), and the github-pages
+# environment only allows deployments from the default branch. Both
+# branches trigger so deploys work now and keep working if the default
+# branch is later switched to main.
 on:
   push:
-    branches: [main]
+    branches: [main, claude/nitro-game-modernized-6ttvsm]
   workflow_dispatch:
 
 permissions:
