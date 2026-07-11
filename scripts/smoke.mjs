@@ -28,8 +28,9 @@ await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.waitForTimeout(3000);
 await page.screenshot({ path: `${OUT}/1-menu.png` });
 
-// Click PLAY (center of the menu layout).
-await page.mouse.click(640, 380);
+// Click PLAY. Wide menu design is 960x560 scaled to fit (cap 1.2):
+// at 1280x800 → scale 1.2, offset (64,64), PLAY at design (480,392).
+await page.mouse.click(640, 534);
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}/2-arena.png` });
 
@@ -62,6 +63,17 @@ await page.mouse.up();
 await page.waitForTimeout(1500);
 const after = await sample();
 await page.screenshot({ path: `${OUT}/3-driving.png` });
+
+// --- Mobile viewport pass: verify the narrow menu/garage layouts. ---
+const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+mobile.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
+await mobile.goto(BASE, { waitUntil: 'networkidle' });
+await mobile.waitForTimeout(2500);
+await mobile.screenshot({ path: `${OUT}/m1-menu.png` });
+// GARAGE button in narrow design (420x810): (210,474) → screen ≈ (195,486).
+await mobile.mouse.click(195, 486);
+await mobile.waitForTimeout(1500);
+await mobile.screenshot({ path: `${OUT}/m2-garage.png` });
 
 await browser.close();
 

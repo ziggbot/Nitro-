@@ -29,6 +29,7 @@ export class HudScene extends Phaser.Scene {
   private feed: FeedEntry[] = [];
   private minimap!: Phaser.GameObjects.Graphics;
   private minimapSize = 110;
+  private boardRows = 5;
 
   constructor() {
     super('hud');
@@ -42,6 +43,10 @@ export class HudScene extends Phaser.Scene {
   create(): void {
     this.arenaScene = this.scene.get('arena') as ArenaScene;
     const w = this.scale.width;
+    // On narrow (mobile) screens the corner panels must not collide.
+    const narrow = w < 700;
+    this.boardRows = narrow ? 3 : 5;
+    this.minimapSize = narrow ? 84 : 110;
 
     // --- Top-left: fuel + trail bars + score line, one compact panel. ---
     makePanel(this, 116, 52, 212, 88, 0.45);
@@ -57,11 +62,13 @@ export class HudScene extends Phaser.Scene {
     this.scoreLine = this.add.text(20, 74, '', bodyStyle(13, hexToCss(PALETTE.cyan)));
 
     // --- Top-right: compact round leaderboard. ---
-    makePanel(this, w - 88, 66, 160, 112, 0.4);
+    const boardW = narrow ? 132 : 160;
+    const boardH = narrow ? 76 : 112;
+    makePanel(this, w - boardW / 2 - 8, 12 + boardH / 2, boardW, boardH, 0.4);
     this.add
-      .text(w - 160, 16, (this.arenaDef.night ? '🌙 ' : '') + this.arenaDef.name, bodyStyle(10, hexToCss(PALETTE.gold)))
+      .text(w - boardW, 16, (this.arenaDef.night ? '🌙 ' : '') + this.arenaDef.name.slice(0, narrow ? 14 : 30), bodyStyle(narrow ? 9 : 10, hexToCss(PALETTE.gold)))
       .setOrigin(0, 0);
-    this.boardText = this.add.text(w - 160, 32, '', { ...bodyStyle(11), lineSpacing: 4 });
+    this.boardText = this.add.text(w - boardW, 32, '', { ...bodyStyle(narrow ? 10 : 11), lineSpacing: 4 });
 
     // --- Bottom-right: minimap. ---
     const ms = this.minimapSize;
@@ -117,16 +124,16 @@ export class HudScene extends Phaser.Scene {
         : 'WRECKED',
     );
 
-    // Leaderboard top 5.
+    // Leaderboard.
     const top = [...this.arenaScene.cars]
       .filter((c) => c.alive)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+      .slice(0, this.boardRows);
     this.boardText.setText(
       top
         .map((c, i) => {
           const marker = c === player ? '▶' : ' ';
-          return `${marker}${i + 1}. ${c.driver.name.slice(0, 11).padEnd(11)} ${c.score}`;
+          return `${marker}${i + 1}. ${c.driver.name.slice(0, 10).padEnd(10)} ${c.score}`;
         })
         .join('\n'),
     );

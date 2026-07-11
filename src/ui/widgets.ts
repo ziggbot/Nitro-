@@ -71,8 +71,10 @@ export function makeButton(
       if (enabled) bg.setFillStyle(0x1a2a44, 0.95);
     })
     .on('pointerout', () => bg.setFillStyle(PALETTE.uiPanel, 0.92))
-    .on('pointerdown', () => {
-      if (!enabled) return;
+    // Fire on release, not press — plays nicer with touch (no ghost taps
+    // while scrolling/panning) and lets the user slide off to cancel.
+    .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (!enabled || pointer.getDistance() > 16) return;
       sfx.click();
       onClick();
     });
@@ -95,4 +97,39 @@ export function formatMs(ms: number): string {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Destroy every display object in the scene. Menus rebuild their whole UI
+ * on navigation/resize; merely removing children from the display list
+ * leaves their input zones alive, which caused invisible "ghost buttons"
+ * layered over the fresh UI on mobile.
+ */
+export function clearScene(scene: Phaser.Scene): void {
+  [...scene.children.list].forEach((obj) => obj.destroy());
+}
+
+/** Portrait-ish or small screens get the stacked mobile layout. */
+export function isNarrow(scene: Phaser.Scene): boolean {
+  return scene.scale.width < 700 || scene.scale.width < scene.scale.height * 0.95;
+}
+
+/**
+ * Menus are laid out on a fixed design canvas (DW×DH), then everything
+ * built after `fromIndex` is wrapped in a container that is scaled and
+ * centered to fit the real screen — one code path fits every device.
+ */
+export function fitToScreen(
+  scene: Phaser.Scene,
+  fromIndex: number,
+  dw: number,
+  dh: number,
+  maxScale = 1.2,
+): Phaser.GameObjects.Container {
+  const items = scene.children.list.slice(fromIndex) as Phaser.GameObjects.GameObject[];
+  const root = scene.add.container(0, 0);
+  root.add(items);
+  const s = Math.min(scene.scale.width / dw, scene.scale.height / dh, maxScale);
+  root.setScale(s).setPosition((scene.scale.width - dw * s) / 2, (scene.scale.height - dh * s) / 2);
+  return root;
 }

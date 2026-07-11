@@ -6,7 +6,7 @@ import { sfx } from '../game/sfx';
 import { refreshMissions, touchStreak, trackRun } from '../meta/Missions';
 import { levelForXp } from '../meta/Progression';
 import { loadSave, persistSave } from '../meta/SaveGame';
-import { bodyStyle, formatMs, makeButton, makePanel, titleStyle } from '../ui/widgets';
+import { bodyStyle, clearScene, fitToScreen, formatMs, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
 
 /** End-of-run screen. Banks rewards into the save exactly once. */
 export class ResultsScene extends Phaser.Scene {
@@ -50,7 +50,6 @@ export class ResultsScene extends Phaser.Scene {
       score: this.result.score,
     });
 
-    // Personal-best board.
     save.bestRuns.push({
       score: this.result.score,
       kills: this.result.kills,
@@ -64,12 +63,29 @@ export class ResultsScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.buildUi();
+    this.scale.on('resize', this.onResize, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', this.onResize, this);
+    });
+    if (this.leveledUp) sfx.levelUp();
+  }
+
+  private onResize(): void {
+    this.buildUi();
+  }
+
+  private buildUi(): void {
+    clearScene(this);
     const w = this.scale.width;
     const h = this.scale.height;
-    const cx = w / 2;
-    const arena = arenaById(this.arenaId);
+    this.add.rectangle(w / 2, h / 2, w, h, PALETTE.deepSpace, 0.96);
 
-    this.add.rectangle(cx, h / 2, w, h, PALETTE.deepSpace, 0.96);
+    const start = this.children.list.length;
+    const narrow = isNarrow(this);
+    const DW = narrow ? 420 : 960;
+    const cx = DW / 2;
+    const arena = arenaById(this.arenaId);
 
     const headline =
       this.result.causeOfDeath === 'fuel'
@@ -79,56 +95,64 @@ export class ResultsScene extends Phaser.Scene {
           : this.result.causeOfDeath === 'hazard'
             ? 'ROAD KILL!'
             : 'WRECKED!';
-    this.add.text(cx, 70, headline, titleStyle(52, hexToCss(PALETTE.red))).setOrigin(0.5);
+    this.add.text(cx, 64, headline, titleStyle(narrow ? 38 : 48, hexToCss(PALETTE.red))).setOrigin(0.5);
     if (this.result.killedBy) {
       this.add
-        .text(cx, 118, `${this.result.killedBy} claimed your scrap`, bodyStyle(15, hexToCss(PALETTE.magenta)))
+        .text(cx, 106, `${this.result.killedBy} claimed your scrap`, bodyStyle(13, hexToCss(PALETTE.magenta)))
         .setOrigin(0.5);
     }
 
-    // Stars.
     const stars = '★'.repeat(this.result.starsEarned) + '☆'.repeat(3 - this.result.starsEarned);
-    this.add.text(cx, 158, stars, titleStyle(38, hexToCss(PALETTE.gold))).setOrigin(0.5);
+    this.add.text(cx, 148, stars, titleStyle(34, hexToCss(PALETTE.gold))).setOrigin(0.5);
     this.add
-      .text(cx, 196, `+${this.newTrophies} trophies  ·  ${arena.name}${arena.night ? ' 🌙' : ''}`, bodyStyle(13, hexToCss(PALETTE.uiDim)))
+      .text(cx, 182, `+${this.newTrophies} trophies  ·  ${arena.name}${arena.night ? ' 🌙' : ''}`, bodyStyle(12, hexToCss(PALETTE.uiDim)))
       .setOrigin(0.5);
 
     // Stats panel.
-    makePanel(this, cx, 310, 380, 180);
+    const pw = narrow ? 380 : 400;
+    makePanel(this, cx, 300, pw, 180);
     const rows: [string, string][] = [
       ['Score', `${this.result.score}`],
       ['Rivals wrecked', `${this.result.kills}`],
-      ['Orbs collected', `${this.result.orbsEaten}`],
+      ['Pickups collected', `${this.result.orbsEaten}`],
       ['Survived', formatMs(this.result.survivalMs)],
       ['Best rank', `#${this.result.bestRank}`],
     ];
     rows.forEach(([label, value], i) => {
-      const y = 240 + i * 28;
-      this.add.text(cx - 170, y, label, bodyStyle(15, hexToCss(PALETTE.uiDim)));
-      this.add.text(cx + 170, y, value, bodyStyle(15)).setOrigin(1, 0);
+      const y = 226 + i * 30;
+      this.add.text(cx - pw / 2 + 22, y, label, bodyStyle(14, hexToCss(PALETTE.uiDim)));
+      this.add.text(cx + pw / 2 - 22, y, value, bodyStyle(14)).setOrigin(1, 0);
     });
 
-    // Rewards.
     this.add
       .text(
         cx,
-        424,
-        `+${this.result.xpEarned} XP   ·   +${this.result.scrapEarned} 🔩 scrap` +
-          (arena.rewardMult > 1 ? `   (×${arena.rewardMult} arena bonus)` : ''),
-        bodyStyle(17, hexToCss(PALETTE.amber)),
+        414,
+        `+${this.result.xpEarned} XP   ·   +${this.result.scrapEarned} 🔩` + (arena.rewardMult > 1 ? `   (×${arena.rewardMult})` : ''),
+        bodyStyle(15, hexToCss(PALETTE.amber)),
       )
       .setOrigin(0.5);
 
     if (this.leveledUp) {
       const lvl = this.add
-        .text(cx, 458, `⬆ LEVEL UP! Driver level ${levelForXp(loadSave().xp)}`, titleStyle(22, hexToCss(PALETTE.lime)))
+        .text(cx, 448, `⬆ LEVEL UP! Driver level ${levelForXp(loadSave().xp)}`, titleStyle(19, hexToCss(PALETTE.lime)))
         .setOrigin(0.5);
       this.tweens.add({ targets: lvl, scale: { from: 0.6, to: 1 }, duration: 400, ease: 'Back.out' });
-      sfx.levelUp();
     }
 
-    makeButton(this, cx - 150, h - 70, 200, 52, '↻ RACE AGAIN', () => this.scene.start('arena', { arenaId: this.arenaId }), PALETTE.lime);
-    makeButton(this, cx + 60, h - 70, 160, 52, '🔧 GARAGE', () => this.scene.start('garage'));
-    makeButton(this, cx + 240, h - 70, 140, 52, 'MENU', () => this.scene.start('menu'));
+    let DH: number;
+    if (narrow) {
+      makeButton(this, cx, 512, 340, 56, '↻ RACE AGAIN', () => this.scene.start('arena', { arenaId: this.arenaId }), PALETTE.lime);
+      makeButton(this, cx, 574, 340, 44, '🔧 GARAGE', () => this.scene.start('garage'));
+      makeButton(this, cx, 628, 340, 40, 'MENU', () => this.scene.start('menu'));
+      DH = 680;
+    } else {
+      makeButton(this, cx - 190, 512, 220, 54, '↻ RACE AGAIN', () => this.scene.start('arena', { arenaId: this.arenaId }), PALETTE.lime);
+      makeButton(this, cx + 10, 512, 160, 54, '🔧 GARAGE', () => this.scene.start('garage'));
+      makeButton(this, cx + 185, 512, 160, 54, 'MENU', () => this.scene.start('menu'));
+      DH = 560;
+    }
+
+    fitToScreen(this, start, DW, DH);
   }
 }
