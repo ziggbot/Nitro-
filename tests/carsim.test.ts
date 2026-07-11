@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CarSim, FUEL_DRAIN, MIN_TRAIL } from '../src/game/CarSim';
+import { CarSim, FUEL_DRAIN, MIN_TRAIL, ORB_GROWTH } from '../src/game/CarSim';
 import type { Driver } from '../src/core/types';
 
 const dummyDriver: Driver = {
@@ -49,7 +49,7 @@ describe('car simulation', () => {
     const before = car.trailLimit;
     car.fuel = 99.9;
     car.eatOrb();
-    expect(car.trailLimit).toBe(before + 1);
+    expect(car.trailLimit).toBe(before + ORB_GROWTH);
     expect(car.fuel).toBe(100);
     expect(car.orbsEaten).toBe(1);
   });

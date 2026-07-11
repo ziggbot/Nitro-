@@ -355,7 +355,7 @@ export class ArenaScene extends Phaser.Scene {
         const dx = scrap.x - car.x;
         const dy = scrap.y - car.y;
         if (dx * dx + dy * dy < ORB_EAT_RADIUS * ORB_EAT_RADIUS) {
-          car.eatOrb(4, 2);
+          car.eatOrb(5, 5);
           if (car === this.player) sfx.scrapPickup();
           scrap.sprite.destroy();
           this.scraps.splice(i, 1);

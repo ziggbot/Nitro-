@@ -9,13 +9,16 @@ export const FUEL_DRAIN = 1.1;
 /** Extra fuel drain per second while boosting. */
 export const BOOST_FUEL_DRAIN = 5;
 /** Trail segments burned per second while boosting (snake.io risk/reward). */
-export const BOOST_TRAIL_BURN = 4;
+export const BOOST_TRAIL_BURN = 7;
 /** Speed multiplier while boosting. */
 export const BOOST_MULT = 1.45;
 /** Fuel gained per orb. */
 export const ORB_FUEL = 2.2;
-/** Trail segments gained per orb. */
-export const ORB_GROWTH = 1;
+/**
+ * Trail segments gained per orb. Each segment is TRAIL_SPACING px, so this
+ * must be large enough that a single orb visibly lengthens the tail.
+ */
+export const ORB_GROWTH = 3;
 
 export interface TrailPoint {
   x: number;

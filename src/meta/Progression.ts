@@ -35,7 +35,7 @@ export function starsForRun(r: { survivalMs: number; kills: number; score: numbe
   let stars = 0;
   if (r.survivalMs >= 120_000) stars++;
   if (r.kills >= 3) stars++;
-  if (r.score >= 60) stars++;
+  if (r.score >= 100) stars++;
   return stars;
 }
 
