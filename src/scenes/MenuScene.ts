@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ARENAS } from '../config/arenas';
 import { PALETTE, hexToCss } from '../config/palette';
 import { sfx } from '../game/sfx';
+import { music } from '../game/music';
 import { claimMission, missionDef, refreshMissions } from '../meta/Missions';
 import { levelForXp, xpProgress } from '../meta/Progression';
 import { loadSave, persistSave, type SaveData } from '../meta/SaveGame';
@@ -23,6 +24,12 @@ export class MenuScene extends Phaser.Scene {
 
     this.arenaIndex = Math.max(0, ARENAS.findIndex((a) => a.id === this.save.selectedArena));
     this.buildUi();
+
+    // Browsers only allow audio after a user gesture — start the
+    // soundtrack on the first click/tap/keypress.
+    this.input.once('pointerdown', () => music.start());
+    this.input.keyboard?.once('keydown', () => music.start());
+    this.input.keyboard?.on('keydown-M', () => music.toggleMute());
   }
 
   private buildUi(): void {
@@ -135,7 +142,7 @@ export class MenuScene extends Phaser.Scene {
     });
 
     this.add
-      .text(cx, h - 24, 'A tribute to NITRO (Psygnosis, 1990) — grow the longest nitro trail in the arena', bodyStyle(11, hexToCss(PALETTE.uiDim)))
+      .text(cx, h - 24, 'A tribute to NITRO (Psygnosis, 1990) — grow the longest nitro trail in the arena  ·  M: music on/off', bodyStyle(11, hexToCss(PALETTE.uiDim)))
       .setOrigin(0.5);
   }
 

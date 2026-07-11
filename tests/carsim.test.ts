@@ -69,6 +69,19 @@ describe('car simulation', () => {
     expect(Math.abs(car.speed)).toBeLessThan(5);
   });
 
+  it('barrel overdrive lifts speed above top speed without burning trail', () => {
+    const car = makeCar();
+    const trailBefore = car.trailLimit;
+    for (let i = 0; i < 300; i++) car.update(1 / 60, { steer: 0, throttle: 1, boost: false });
+    car.applyOverdrive(3);
+    for (let i = 0; i < 120; i++) car.update(1 / 60, { steer: 0, throttle: 1, boost: false });
+    expect(car.speed).toBeGreaterThan(car.stats.topSpeed * 1.2);
+    expect(car.trailLimit).toBe(trailBefore); // free speed — no burn
+    // Overdrive expires.
+    for (let i = 0; i < 120; i++) car.update(1 / 60, { steer: 0, throttle: 1, boost: false });
+    expect(car.overdriveTimer).toBeLessThanOrEqual(0);
+  });
+
   it('score combines trail growth and kills', () => {
     const car = makeCar();
     expect(car.score).toBe(0);

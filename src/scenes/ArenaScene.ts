@@ -10,6 +10,7 @@ import { CarSim, MIN_TRAIL, TRAIL_SPACING } from '../game/CarSim';
 import { PlayerDriver } from '../game/PlayerDriver';
 import { SpatialGrid, type GridPoint } from '../game/SpatialGrid';
 import { sfx } from '../game/sfx';
+import { music } from '../game/music';
 import { loadSave, type SaveData } from '../meta/SaveGame';
 import { applyRewards } from '../meta/Progression';
 
@@ -35,9 +36,27 @@ interface Hazard {
 }
 
 const WALL_MARGIN = 24;
-const CAR_RADIUS = 16;
-const ORB_EAT_RADIUS = 26;
+const CAR_RADIUS = 20;
+const CAR_SCALE = 0.8;
+const ORB_EAT_RADIUS = 32;
 const TRAIL_HIT_RADIUS = 15;
+
+/** Regular pickups: what each container gives (fuel units, trail segments). */
+type PickupType = 'fuel' | 'gas' | 'battery';
+const PICKUP_EFFECTS: Record<PickupType, { fuel: number; growth: number }> = {
+  fuel: { fuel: 6, growth: 2 }, // jerry can — refuels
+  gas: { fuel: 3, growth: 4 }, // gas bottle — grows the trail
+  battery: { fuel: 4, growth: 3 }, // battery — balanced charge
+};
+const PICKUP_TYPES: PickupType[] = ['fuel', 'gas', 'battery'];
+
+interface Barrel {
+  x: number;
+  y: number;
+  sprite: Phaser.GameObjects.Image;
+  active: boolean;
+  respawnAt: number;
+}
 
 export class ArenaScene extends Phaser.Scene {
   private arena!: ArenaDef;
@@ -57,6 +76,8 @@ export class ArenaScene extends Phaser.Scene {
   private orbGrid = new SpatialGrid(96);
   private orbPoints: GridPoint[] = [];
   private orbSprites: Phaser.GameObjects.Image[] = [];
+  private orbTypes: PickupType[] = [];
+  private barrels: Barrel[] = [];
   private scraps: ScrapOrb[] = [];
   trailGrid = new SpatialGrid(64);
   hazards: Hazard[] = [];
@@ -80,6 +101,8 @@ export class ArenaScene extends Phaser.Scene {
     this.botRespawns = [];
     this.orbPoints = [];
     this.orbSprites = [];
+    this.orbTypes = [];
+    this.barrels = [];
     this.scraps = [];
     this.hazards = [];
     this.orbGrid.clear();
@@ -105,6 +128,8 @@ export class ArenaScene extends Phaser.Scene {
 
     this.spawnHazards();
     for (let i = 0; i < this.arena.orbCount; i++) this.spawnOrb(i);
+    // Rare NITRO barrels, the original game's power-up.
+    for (let i = 0; i < 6; i++) this.spawnBarrel();
 
     // Player car with saved cosmetics + garage upgrades.
     const classDef = CAR_CLASSES.find((c) => c.id === this.save.selectedCar) ?? CAR_CLASSES[0];
@@ -143,11 +168,17 @@ export class ArenaScene extends Phaser.Scene {
     this.runStart = this.time.now;
     this.scene.launch('hud', { arena: this.arena });
 
+    // Audio: engine hum + keep the soundtrack rolling.
+    sfx.startEngine();
+    music.start();
+    this.input.once('pointerdown', () => music.start());
+
     this.input.keyboard!.on('keydown-ESC', () => {
       if (!this.playerDead) this.wreck(this.player, 'fuel');
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off('resize', this.applyZoom, this);
+      sfx.stopEngine();
     });
   }
 
@@ -192,9 +223,9 @@ export class ArenaScene extends Phaser.Scene {
     const pos = this.randomOpenPos(isPlayer ? 600 : 250);
     car.spawnAt(pos.x, pos.y, Math.random() * Math.PI * 2);
 
-    const sprite = this.add.image(0, 0, texture).setScale(0.55).setTint(tint);
+    const sprite = this.add.image(0, 0, texture).setScale(CAR_SCALE).setTint(tint);
     const label = this.add
-      .text(0, -30, driver.name, {
+      .text(0, -38, driver.name, {
         fontFamily: '"Segoe UI", Arial, sans-serif',
         fontSize: '13px',
         color: isPlayer ? '#ffffff' : '#a9c1e8',
@@ -234,14 +265,38 @@ export class ArenaScene extends Phaser.Scene {
 
   private spawnOrb(slot: number): void {
     const pos = this.randomOpenPos(80);
-    const colorPool = [PALETTE.cyan, PALETTE.magenta, PALETTE.amber, PALETTE.lime, PALETTE.violet];
-    const tint = colorPool[Math.floor(Math.random() * colorPool.length)];
-    const sprite = this.add.image(pos.x, pos.y, 'orb').setTint(tint).setScale(0.8 + Math.random() * 0.5);
+    const type = PICKUP_TYPES[Math.floor(Math.random() * PICKUP_TYPES.length)];
+    const sprite = this.add
+      .image(pos.x, pos.y, `pickup-${type}`)
+      .setScale(0.9 + Math.random() * 0.2)
+      .setDepth(3);
     const point: GridPoint = { x: pos.x, y: pos.y, owner: -1, data: slot };
     if (this.orbSprites[slot]) this.orbSprites[slot].destroy();
     this.orbSprites[slot] = sprite;
     this.orbPoints[slot] = point;
+    this.orbTypes[slot] = type;
     this.orbGrid.insert(point);
+  }
+
+  private spawnBarrel(existing?: Barrel): void {
+    const pos = this.randomOpenPos(300);
+    if (existing) {
+      existing.x = pos.x;
+      existing.y = pos.y;
+      existing.active = true;
+      existing.sprite.setPosition(pos.x, pos.y).setVisible(true);
+      return;
+    }
+    const sprite = this.add.image(pos.x, pos.y, 'pickup-barrel').setDepth(3);
+    this.tweens.add({
+      targets: sprite,
+      scale: { from: 1, to: 1.15 },
+      yoyo: true,
+      repeat: -1,
+      duration: 550,
+      ease: 'Sine.inOut',
+    });
+    this.barrels.push({ x: pos.x, y: pos.y, sprite, active: true, respawnAt: 0 });
   }
 
   private respawnOrb(slot: number): void {
@@ -287,6 +342,12 @@ export class ArenaScene extends Phaser.Scene {
     this.drawTrails();
     this.updateNight();
     this.updatePlayerWarnings();
+
+    // Engine hum follows the player's speed.
+    if (this.player.alive) {
+      const frac = Phaser.Math.Clamp(Math.abs(this.player.speed) / this.player.stats.topSpeed, 0, 1);
+      sfx.setEngine(frac, this.player.boosting || this.player.overdriveTimer > 0);
+    }
   }
 
   private rebuildTrailGrid(): void {
@@ -341,13 +402,49 @@ export class ArenaScene extends Phaser.Scene {
         continue;
       }
 
-      // Orbs.
+      // Container pickups (jerry cans, gas bottles, batteries).
       this.orbGrid.query(car.x, car.y, ORB_EAT_RADIUS, (p) => {
-        car.eatOrb();
+        const effect = PICKUP_EFFECTS[this.orbTypes[p.data] ?? 'battery'];
+        car.eatOrb(effect.fuel, effect.growth);
         this.respawnOrb(p.data);
         if (car === this.player) sfx.pickup();
         this.burstAt(p.x, p.y, 3, PALETTE.cyan);
       });
+
+      // NITRO barrels — the original game's power-up: overdrive surge.
+      for (const barrel of this.barrels) {
+        if (!barrel.active) continue;
+        const bdx = barrel.x - car.x;
+        const bdy = barrel.y - car.y;
+        if (bdx * bdx + bdy * bdy > 36 * 36) continue;
+        barrel.active = false;
+        barrel.respawnAt = time + 15_000;
+        barrel.sprite.setVisible(false);
+        car.eatOrb(10, 5);
+        car.applyOverdrive(3);
+        this.burstAt(barrel.x, barrel.y, 18, PALETTE.gold);
+        if (car === this.player) {
+          sfx.powerup();
+          const popup = this.add
+            .text(car.x, car.y - 50, 'NITRO!', {
+              fontFamily: 'Impact, "Arial Black", sans-serif',
+              fontSize: '30px',
+              color: '#ffd166',
+              stroke: '#000',
+              strokeThickness: 5,
+            })
+            .setOrigin(0.5)
+            .setDepth(30);
+          this.tweens.add({
+            targets: popup,
+            y: popup.y - 46,
+            alpha: 0,
+            duration: 900,
+            ease: 'Cubic.out',
+            onComplete: () => popup.destroy(),
+          });
+        }
+      }
 
       // Scrap from wrecks: worth more fuel + growth.
       for (let i = this.scraps.length - 1; i >= 0; i--) {
@@ -464,6 +561,7 @@ export class ArenaScene extends Phaser.Scene {
     this.burstAt(car.x, car.y, 14, 0xff5a1f);
     if (car === this.player) {
       sfx.wreck();
+      sfx.stopEngine();
       this.cameras.main.shake(350, 0.012);
       this.cameras.main.flash(200, 255, 120, 40);
     } else {
@@ -481,6 +579,9 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private handleRespawns(time: number): void {
+    for (const barrel of this.barrels) {
+      if (!barrel.active && time >= barrel.respawnAt) this.spawnBarrel(barrel);
+    }
     for (let i = this.botRespawns.length - 1; i >= 0; i--) {
       const r = this.botRespawns[i];
       if (time < r.at) continue;
@@ -536,6 +637,8 @@ export class ArenaScene extends Phaser.Scene {
       const view = this.views.get(car.id)!;
       view.container.setPosition(car.x, car.y);
       view.sprite.setRotation(car.heading);
+      // Overdrive/boost makes the car visibly swell a touch.
+      view.sprite.setScale(CAR_SCALE * (car.boosting || car.overdriveTimer > 0 ? 1.08 : 1));
       view.label.setRotation(0);
     }
   }
@@ -548,16 +651,17 @@ export class ArenaScene extends Phaser.Scene {
       const pts = car.trail;
       const colors = car.trailColors;
       const n = pts.length;
+      const hot = car.boosting || car.overdriveTimer > 0;
       for (let i = 1; i < n; i++) {
         // Head (newest, end of array) = colors[0]; tail = last color.
         const frac = 1 - i / n;
         const color = sampleGradient(colors, frac);
-        const alphaScale = car.boosting ? 1.25 : 1;
+        const alphaScale = hot ? 1.25 : 1;
         // Outer glow pass.
-        g.lineStyle(13, color, 0.16 * alphaScale);
+        g.lineStyle(15, color, 0.16 * alphaScale);
         g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
         // Bright core.
-        g.lineStyle(4.5, color, Math.min(1, 0.5 + 0.45 * (i / n)) * alphaScale);
+        g.lineStyle(5.5, color, Math.min(1, 0.5 + 0.45 * (i / n)) * alphaScale);
         g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
       }
     }

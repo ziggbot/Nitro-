@@ -12,6 +12,8 @@ export const BOOST_FUEL_DRAIN = 5;
 export const BOOST_TRAIL_BURN = 7;
 /** Speed multiplier while boosting. */
 export const BOOST_MULT = 1.45;
+/** Speed multiplier during barrel overdrive (free — no trail/fuel burn). */
+export const OVERDRIVE_MULT = 1.5;
 /** Fuel gained per orb. */
 export const ORB_FUEL = 2.2;
 /**
@@ -55,6 +57,8 @@ export class CarSim {
   orbsEaten = 0;
   boostMs = 0;
   boosting = false;
+  /** Seconds of nitro-barrel overdrive left. */
+  overdriveTimer = 0;
   /** Rank in the round leaderboard, updated by the arena. */
   rank = 0;
 
@@ -87,6 +91,11 @@ export class CarSim {
     this.orbsEaten++;
     this.fuel = Math.min(this.stats.tank, this.fuel + fuelValue);
     this.trailLimit += growth;
+  }
+
+  /** Nitro barrel: free top-speed surge for `seconds`. */
+  applyOverdrive(seconds: number): void {
+    this.overdriveTimer = Math.max(this.overdriveTimer, seconds);
   }
 
   /** One hazard/bump hit. Returns true if this wrecked the car. */
@@ -124,7 +133,12 @@ export class CarSim {
     // Throttle → target speed. Engine dies without fuel: coast to a stop.
     const slowMult = this.slowTimer > 0 ? 0.55 : 1;
     if (this.slowTimer > 0) this.slowTimer -= dt;
-    const boostMult = this.boosting ? BOOST_MULT : 1;
+    if (this.overdriveTimer > 0) this.overdriveTimer -= dt;
+    // Overdrive and boost don't stack — the stronger one wins.
+    const boostMult = Math.max(
+      this.boosting ? BOOST_MULT : 1,
+      this.overdriveTimer > 0 ? OVERDRIVE_MULT : 1,
+    );
     const targetSpeed = outOfFuel ? 0 : input.throttle * s.topSpeed * boostMult * slowMult;
     const rate = targetSpeed > this.speed ? s.accel : s.accel * 1.6;
     const delta = targetSpeed - this.speed;

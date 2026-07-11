@@ -3,6 +3,7 @@ import type { ArenaDef } from '../config/arenas';
 import { PALETTE, hexToCss } from '../config/palette';
 import { MIN_TRAIL } from '../game/CarSim';
 import { bodyStyle, makePanel } from '../ui/widgets';
+import { music } from '../game/music';
 import type { ArenaScene } from './ArenaScene';
 
 interface FeedEntry {
@@ -75,10 +76,11 @@ export class HudScene extends Phaser.Scene {
 
     // Controls hint, fades out quickly.
     const hint = this.add
-      .text(w / 2, this.scale.height - 32, 'Steer: mouse/touch or WASD · Boost: hold click/SPACE', bodyStyle(12, hexToCss(PALETTE.uiDim)))
+      .text(w / 2, this.scale.height - 32, 'Steer: mouse/touch or WASD · Boost: hold click/SPACE · M: music', bodyStyle(12, hexToCss(PALETTE.uiDim)))
       .setOrigin(0.5)
       .setAlpha(0.8);
     this.tweens.add({ targets: hint, alpha: 0, delay: 4000, duration: 1000 });
+    this.input.keyboard?.on('keydown-M', () => music.toggleMute());
   }
 
   private onKill(e: { killer: string; victim: string }): void {

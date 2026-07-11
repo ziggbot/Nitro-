@@ -108,6 +108,66 @@ class Sfx {
     notes.forEach((f, i) => setTimeout(() => this.tone(f, f, 0.14, 'square', 0.25), i * 90));
   }
 
+  /** Nitro barrel pickup — triumphant rising arpeggio. */
+  powerup(): void {
+    const notes = [392, 523, 659, 784];
+    notes.forEach((f, i) => setTimeout(() => this.tone(f, f * 1.02, 0.12, 'sawtooth', 0.22), i * 55));
+  }
+
+  // --- Continuous engine hum, pitch/volume follow the player's speed. ---
+  private engineOsc: OscillatorNode | null = null;
+  private engineSub: OscillatorNode | null = null;
+  private engineGain: GainNode | null = null;
+
+  startEngine(): void {
+    const ctx = this.ensure();
+    if (!ctx || !this.master || this.engineOsc) return;
+    this.engineOsc = ctx.createOscillator();
+    this.engineOsc.type = 'sawtooth';
+    this.engineOsc.frequency.value = 55;
+    this.engineSub = ctx.createOscillator();
+    this.engineSub.type = 'sine';
+    this.engineSub.frequency.value = 27.5;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 420;
+    this.engineGain = ctx.createGain();
+    this.engineGain.gain.value = 0;
+    this.engineOsc.connect(lp);
+    this.engineSub.connect(lp);
+    lp.connect(this.engineGain).connect(this.master);
+    this.engineOsc.start();
+    this.engineSub.start();
+  }
+
+  /** speedFrac 0..1 of top speed; surge = boosting/overdrive. */
+  setEngine(speedFrac: number, surge: boolean): void {
+    if (!this.engineOsc || !this.engineSub || !this.engineGain || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const wobble = Math.sin(now * 31) * 2.2;
+    const freq = 48 + speedFrac * 105 + (surge ? 22 : 0) + wobble;
+    this.engineOsc.frequency.setTargetAtTime(freq, now, 0.06);
+    this.engineSub.frequency.setTargetAtTime(freq / 2, now, 0.06);
+    const vol = 0.02 + speedFrac * 0.045 + (surge ? 0.025 : 0);
+    this.engineGain.gain.setTargetAtTime(this.enabled ? vol : 0, now, 0.08);
+  }
+
+  stopEngine(): void {
+    if (this.engineGain && this.ctx) {
+      this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+    }
+    const osc = this.engineOsc;
+    const sub = this.engineSub;
+    if (this.ctx && osc && sub) {
+      const stopAt = this.ctx.currentTime + 0.3;
+      osc.stop(stopAt);
+      sub.stop(stopAt);
+    }
+    this.engineOsc = null;
+    this.engineSub = null;
+    this.engineGain = null;
+  }
+
   reward(): void {
     this.tone(784, 1568, 0.2, 'triangle', 0.3);
   }
