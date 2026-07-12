@@ -36,8 +36,8 @@ interface Hazard {
 }
 
 const WALL_MARGIN = 24;
-const CAR_RADIUS = 20;
-const CAR_SCALE = 0.8;
+const CAR_RADIUS = 25;
+const CAR_SCALE = 1.0;
 const ORB_EAT_RADIUS = 32;
 const TRAIL_HIT_RADIUS = 15;
 
@@ -225,7 +225,7 @@ export class ArenaScene extends Phaser.Scene {
 
     const sprite = this.add.image(0, 0, texture).setScale(CAR_SCALE).setTint(tint);
     const label = this.add
-      .text(0, -38, driver.name, {
+      .text(0, -46, driver.name, {
         fontFamily: '"Segoe UI", Arial, sans-serif',
         fontSize: '13px',
         color: isPlayer ? '#ffffff' : '#a9c1e8',
