@@ -31,6 +31,8 @@ export class BootScene extends Phaser.Scene {
     this.makeGasBottle();
     this.makeBattery();
     this.makeBarrel();
+    this.makeWheel();
+    this.makeKnob();
     for (const envId of Object.keys(ENV_PALETTES)) this.makeFloor(envId);
     this.scene.start('menu');
   }
@@ -246,6 +248,50 @@ export class BootScene extends Phaser.Scene {
       ctx.lineTo(250, 122);
       ctx.closePath();
       ctx.fill();
+    });
+  }
+
+  /** Steering-wheel base for the touch joystick (drawn white, tinted in HUD). */
+  private makeWheel(): void {
+    this.canvasTexture('wheel', 144, 144, (ctx) => {
+      const c = 72;
+      ctx.strokeStyle = '#ffffff';
+      // Rim.
+      ctx.lineWidth = 11;
+      ctx.beginPath();
+      ctx.arc(c, c, 62, 0, Math.PI * 2);
+      ctx.stroke();
+      // Three spokes.
+      ctx.lineWidth = 7;
+      for (const a of [Math.PI / 2, Math.PI / 2 + (Math.PI * 2) / 3, Math.PI / 2 - (Math.PI * 2) / 3]) {
+        ctx.beginPath();
+        ctx.moveTo(c + Math.cos(a) * 14, c + Math.sin(a) * 14);
+        ctx.lineTo(c + Math.cos(a) * 57, c + Math.sin(a) * 57);
+        ctx.stroke();
+      }
+      // Hub.
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(c, c, 15, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  /** Draggable thumb knob for the joystick. */
+  private makeKnob(): void {
+    this.canvasTexture('knob', 60, 60, (ctx) => {
+      const g = ctx.createRadialGradient(30, 24, 4, 30, 30, 28);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(1, '#9fc6e8');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(30, 30, 26, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(30, 30, 26, 0, Math.PI * 2);
+      ctx.stroke();
     });
   }
 

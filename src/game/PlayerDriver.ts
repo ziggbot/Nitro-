@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Driver, DriverInput } from '../core/types';
 import type { CarSim } from './CarSim';
+import { touchControls } from './touchControls';
 
 /**
  * Local player input: .io-style pointer steering (car chases the pointer,
@@ -33,6 +34,19 @@ export class PlayerDriver implements Driver {
   }
 
   getInput(_dt: number): DriverInput {
+    // Steering wheel (touch joystick) wins over everything else.
+    if (touchControls.steering && this.car) {
+      this.pointerSteering = false;
+      let diff = touchControls.angle - this.car.heading;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      return {
+        steer: Phaser.Math.Clamp(diff * 2.5, -1, 1),
+        throttle: 1,
+        boost: touchControls.boostHeld || this.keys.SPACE.isDown,
+      };
+    }
+
     const left = this.cursors.left.isDown || this.keys.A.isDown;
     const right = this.cursors.right.isDown || this.keys.D.isDown;
     const up = this.cursors.up.isDown || this.keys.W.isDown;
@@ -52,14 +66,14 @@ export class PlayerDriver implements Driver {
         steer: Phaser.Math.Clamp(diff * 2.5, -1, 1),
         // Pointer very close to the car = ease off, .io style.
         throttle: dist < 40 ? 0.2 : 1,
-        boost: pointer.isDown || this.keys.SPACE.isDown,
+        boost: pointer.isDown || this.keys.SPACE.isDown || touchControls.boostHeld,
       };
     }
 
     return {
       steer: (left ? -1 : 0) + (right ? 1 : 0),
       throttle: down ? 0.25 : up ? 1 : 0.62,
-      boost: this.keys.SPACE.isDown,
+      boost: this.keys.SPACE.isDown || touchControls.boostHeld,
     };
   }
 }

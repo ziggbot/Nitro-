@@ -64,16 +64,16 @@ await page.waitForTimeout(1500);
 const after = await sample();
 await page.screenshot({ path: `${OUT}/3-driving.png` });
 
-// --- Mobile viewport pass: verify the narrow menu/garage layouts. ---
-const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+// --- Mobile viewport pass (touch device): narrow layouts + touch controls. ---
+const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
 mobile.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
 await mobile.goto(BASE, { waitUntil: 'networkidle' });
 await mobile.waitForTimeout(2500);
 await mobile.screenshot({ path: `${OUT}/m1-menu.png` });
-// GARAGE button in narrow design (420x810): (210,474) → screen ≈ (195,486).
-await mobile.mouse.click(195, 486);
-await mobile.waitForTimeout(1500);
-await mobile.screenshot({ path: `${OUT}/m2-garage.png` });
+// PLAY button in narrow design (420x810): (210,412) → screen ≈ (195,428).
+await mobile.touchscreen.tap(195, 428);
+await mobile.waitForTimeout(2500);
+await mobile.screenshot({ path: `${OUT}/m2-arena.png` });
 
 await browser.close();
 

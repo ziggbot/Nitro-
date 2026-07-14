@@ -19,6 +19,10 @@ const game = new Phaser.Game({
   render: {
     antialias: true,
   },
+  input: {
+    // Steering wheel + boost button need simultaneous touches.
+    activePointers: 3,
+  },
   scene: [BootScene, MenuScene, GarageScene, ArenaScene, HudScene, ResultsScene],
 });
 
