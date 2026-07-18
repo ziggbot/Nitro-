@@ -33,6 +33,10 @@ export class BootScene extends Phaser.Scene {
     this.makeBarrel();
     this.makeWheel();
     this.makeKnob();
+    this.makeDaylightCobbles();
+    this.makeVent();
+    this.makeCrate();
+    this.makeAwning();
     for (const envId of Object.keys(ENV_PALETTES)) this.makeFloor(envId);
     this.scene.start('menu');
   }
@@ -292,6 +296,90 @@ export class BootScene extends Phaser.Scene {
       ctx.beginPath();
       ctx.arc(30, 30, 26, 0, Math.PI * 2);
       ctx.stroke();
+    });
+  }
+
+  /** Daylight cobblestone sidewalk tile — the original's bright city look. */
+  private makeDaylightCobbles(): void {
+    this.canvasTexture('floor-city-day', 256, 256, (ctx) => {
+      ctx.fillStyle = '#9a9aa2';
+      ctx.fillRect(0, 0, 256, 256);
+      // Cobble grid: offset rows of stones with darker mortar lines.
+      let seed = 4242;
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      const stone = 32;
+      for (let row = 0; row < 256 / stone; row++) {
+        const offset = row % 2 === 0 ? 0 : stone / 2;
+        for (let col = -1; col < 256 / stone + 1; col++) {
+          const x = col * stone + offset;
+          const y = row * stone;
+          const shade = 0.88 + rand() * 0.18;
+          ctx.fillStyle = `rgb(${Math.round(150 * shade)}, ${Math.round(150 * shade)}, ${Math.round(158 * shade)})`;
+          ctx.fillRect(x + 1.5, y + 1.5, stone - 3, stone - 3);
+        }
+      }
+      ctx.strokeStyle = 'rgba(90, 90, 100, 0.5)';
+      ctx.lineWidth = 1;
+      for (let y = 0; y <= 256; y += stone) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(256, y + 0.5);
+        ctx.stroke();
+      }
+    });
+  }
+
+  /** Dark rooftop vent grate, like the original's roof details. */
+  private makeVent(): void {
+    this.canvasTexture('vent', 26, 26, (ctx) => {
+      ctx.fillStyle = '#3a3a42';
+      ctx.fillRect(1, 1, 24, 24);
+      ctx.strokeStyle = '#1c1c22';
+      ctx.lineWidth = 2;
+      for (let i = 5; i < 24; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(3, i);
+        ctx.lineTo(23, i);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = '#565660';
+      ctx.strokeRect(1, 1, 24, 24);
+    });
+  }
+
+  /** Wooden crate stack for the roadside. */
+  private makeCrate(): void {
+    this.canvasTexture('crate', 30, 30, (ctx) => {
+      ctx.fillStyle = '#a8823c';
+      ctx.fillRect(1, 1, 28, 28);
+      ctx.strokeStyle = '#6e5424';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(2, 2, 26, 26);
+      ctx.beginPath();
+      ctx.moveTo(3, 3);
+      ctx.lineTo(27, 27);
+      ctx.moveTo(27, 3);
+      ctx.lineTo(3, 27);
+      ctx.stroke();
+    });
+  }
+
+  /** Red/white striped shop awning with a gold trim — straight from 1990. */
+  private makeAwning(): void {
+    this.canvasTexture('awning', 72, 34, (ctx) => {
+      const stripe = 12;
+      for (let i = 0; i < 72 / stripe; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#d8283c' : '#f2f2f4';
+        ctx.fillRect(i * stripe, 0, stripe, 28);
+      }
+      // Scalloped shadow at the hem + gold trim bar.
+      ctx.fillStyle = 'rgba(60, 20, 24, 0.35)';
+      ctx.fillRect(0, 22, 72, 6);
+      ctx.fillStyle = '#b9902c';
+      ctx.fillRect(0, 28, 72, 6);
     });
   }
 

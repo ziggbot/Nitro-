@@ -6,6 +6,8 @@ export interface TrackDef {
   size: number; // world square, px
   laps: number;
   botCount: number;
+  /** Bright daylight look (original city style) vs synthwave night. */
+  daylight: boolean;
   /** Closed-loop control points, smoothed into the centerline spline. */
   controlPoints: { x: number; y: number }[];
   roadWidth: number;
@@ -23,6 +25,7 @@ export const TRACKS: TrackDef[] = [
     size: 4200,
     laps: 3,
     botCount: 5,
+    daylight: true,
     roadWidth: 170,
     rewardMult: 1,
     fuelPickups: 10,

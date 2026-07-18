@@ -83,7 +83,12 @@ export class RaceScene extends Phaser.Scene {
   create(): void {
     const size = this.track.size;
 
-    this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.track.envId}`).setAlpha(0.55);
+    if (this.track.daylight) {
+      this.add.tileSprite(size / 2, size / 2, size, size, 'floor-city-day');
+    } else {
+      this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.track.envId}`).setAlpha(0.55);
+    }
+    this.drawScenery();
     this.drawTrack();
     this.spawnTrackside();
 
@@ -190,13 +195,21 @@ export class RaceScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(1);
     const pts = this.path.pts;
     const w = this.track.roadWidth;
+    const day = this.track.daylight;
 
-    // Outer neon edge glow, then asphalt, then center dashes — retro synthwave circuit.
-    const passes: [number, number, number][] = [
-      [w + 18, pal.wall, 0.18],
-      [w + 6, 0x05050d, 1],
-      [w, 0x15151f, 1],
-    ];
+    // Daylight: bright asphalt with curb edging, original city style.
+    // Night: neon edge glow synthwave circuit.
+    const passes: [number, number, number][] = day
+      ? [
+          [w + 22, 0x55555d, 1], // curb/shadow edge
+          [w + 10, 0xb9902c, 0.65], // gold curb line
+          [w, 0x6e6e76, 1], // asphalt
+        ]
+      : [
+          [w + 18, pal.wall, 0.18],
+          [w + 6, 0x05050d, 1],
+          [w, 0x15151f, 1],
+        ];
     for (const [width, color, alpha] of passes) {
       g.lineStyle(width, color, alpha);
       g.beginPath();
@@ -205,8 +218,8 @@ export class RaceScene extends Phaser.Scene {
       g.closePath();
       g.strokePath();
     }
-    // Center line dashes.
-    g.lineStyle(4, 0x3a3a5c, 0.9);
+    // Center line dashes — white in daylight, dim violet at night.
+    g.lineStyle(day ? 5 : 4, day ? 0xe8e8ec : 0x3a3a5c, 0.9);
     for (let i = 0; i < pts.length; i += 6) {
       const a = pts[i];
       const b = pts[(i + 3) % pts.length];
@@ -236,6 +249,120 @@ export class RaceScene extends Phaser.Scene {
           .setRotation(tangent)
           .setDepth(2);
       }
+    }
+  }
+
+  /**
+   * Trackside scenery in the original's city style: gray rooftops with
+   * gold brick edging, red/white shop awnings facing the road, and
+   * crates/vents scattered on the sidewalks.
+   */
+  private drawScenery(): void {
+    if (!this.track.daylight) return;
+    const size = this.track.size;
+    const roadHalf = this.track.roadWidth / 2;
+    const pts = this.path.pts;
+
+    const minDistToRoad = (x: number, y: number): number => {
+      let best = Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const dx = pts[i].x - x;
+        const dy = pts[i].y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) best = d2;
+      }
+      return Math.sqrt(best);
+    };
+    const nearestRoadPoint = (x: number, y: number): { x: number; y: number } => {
+      let best = pts[0];
+      let bestD2 = Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const dx = pts[i].x - x;
+        const dy = pts[i].y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          best = pts[i];
+        }
+      }
+      return best;
+    };
+
+    const g = this.add.graphics().setDepth(0.5);
+    const placed: { x: number; y: number; r: number }[] = [];
+    let buildings = 0;
+
+    for (let tries = 0; tries < 700 && buildings < 48; tries++) {
+      const bw = 170 + Math.random() * 220;
+      const bh = 170 + Math.random() * 220;
+      const x = 120 + Math.random() * (size - 240 - bw);
+      const y = 120 + Math.random() * (size - 240 - bh);
+      const cx = x + bw / 2;
+      const cy = y + bh / 2;
+      const halfDiag = Math.hypot(bw, bh) / 2;
+
+      const roadDist = minDistToRoad(cx, cy);
+      if (roadDist < roadHalf + halfDiag * 0.82 + 26) continue;
+      if (roadDist > 1400 && Math.random() < 0.6) continue; // keep density near the track
+      if (placed.some((p) => Math.hypot(p.x - cx, p.y - cy) < (p.r + halfDiag) * 0.85)) continue;
+      placed.push({ x: cx, y: cy, r: halfDiag });
+      buildings++;
+
+      // Drop shadow, gold brick border, gray rooftop.
+      g.fillStyle(0x3c3c44, 0.3).fillRect(x + 10, y + 10, bw, bh);
+      g.fillStyle(0xb9902c, 1).fillRect(x, y, bw, bh);
+      g.fillStyle(0x8a6a1c, 0.55);
+      for (let i = 0; i < bw; i += 20) {
+        g.fillRect(x + i, y, 2.5, 15);
+        g.fillRect(x + i + 10, y + bh - 15, 2.5, 15);
+      }
+      for (let i = 0; i < bh; i += 20) {
+        g.fillRect(x, y + i, 15, 2.5);
+        g.fillRect(x + bw - 15, y + i + 10, 15, 2.5);
+      }
+      g.fillStyle(0x84848c, 1).fillRect(x + 15, y + 15, bw - 30, bh - 30);
+      g.fillStyle(0x74747e, 0.6);
+      for (let s = 0; s < 14; s++) {
+        g.fillRect(x + 20 + Math.random() * (bw - 50), y + 20 + Math.random() * (bh - 50), 8, 8);
+      }
+
+      // Roof vents.
+      const vents = 1 + Math.floor(Math.random() * 3);
+      for (let v = 0; v < vents; v++) {
+        this.add
+          .image(x + 35 + Math.random() * (bw - 70), y + 35 + Math.random() * (bh - 70), 'vent')
+          .setDepth(0.6)
+          .setRotation(Math.random() < 0.5 ? 0 : Math.PI / 2);
+      }
+
+      // Road-facing buildings get a striped shop awning on the near edge.
+      if (roadDist < roadHalf + halfDiag + 260) {
+        const road = nearestRoadPoint(cx, cy);
+        const toRoad = Math.atan2(road.y - cy, road.x - cx);
+        const edgeDist = Math.min(bw, bh) / 2;
+        this.add
+          .image(cx + Math.cos(toRoad) * (edgeDist + 8), cy + Math.sin(toRoad) * (edgeDist + 8), 'awning')
+          .setRotation(toRoad + Math.PI / 2)
+          .setDepth(5);
+      }
+    }
+
+    // Crates and vents on the sidewalk just off the road edge.
+    for (let i = 0; i < 34; i++) {
+      const idx = Math.floor(Math.random() * pts.length);
+      const p = pts[idx];
+      const q = pts[(idx + 1) % pts.length];
+      const tangent = Math.atan2(q.y - p.y, q.x - p.x);
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const lateral = roadHalf + 40 + Math.random() * 70;
+      const ox = p.x + Math.cos(tangent + Math.PI / 2) * lateral * side;
+      const oy = p.y + Math.sin(tangent + Math.PI / 2) * lateral * side;
+      if (ox < 60 || oy < 60 || ox > size - 60 || oy > size - 60) continue;
+      this.add
+        .image(ox, oy, Math.random() < 0.7 ? 'crate' : 'vent')
+        .setDepth(0.7)
+        .setRotation(Math.random() * 0.5 - 0.25)
+        .setScale(0.9 + Math.random() * 0.5);
     }
   }
 
