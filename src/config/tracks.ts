@@ -104,6 +104,35 @@ export const TRACKS: TrackDef[] = [
       { x: 850, y: 1950 },
     ],
   },
+  {
+    id: 'wasteland-gp',
+    name: 'Toxic Wasteland — Night',
+    envId: 'wasteland',
+    size: 4400,
+    laps: 3,
+    botCount: 5,
+    daylight: false,
+    roadWidth: 160,
+    rewardMult: 2,
+    fuelPickups: 8,
+    barrels: 4,
+    hazards: { oil: 10, cones: 4, potholes: 10 },
+    // Twisting expert circuit through the sludge fields.
+    controlPoints: [
+      { x: 800, y: 750 },
+      { x: 2100, y: 550 },
+      { x: 3200, y: 850 },
+      { x: 3800, y: 1500 },
+      { x: 3300, y: 2100 },
+      { x: 3750, y: 2900 },
+      { x: 3200, y: 3600 },
+      { x: 2200, y: 3200 },
+      { x: 1400, y: 3650 },
+      { x: 650, y: 3100 },
+      { x: 900, y: 2200 },
+      { x: 550, y: 1400 },
+    ],
+  },
 ];
 
 export function trackById(id: string): TrackDef {

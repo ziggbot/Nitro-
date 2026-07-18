@@ -88,6 +88,9 @@ export class ArenaScene extends Phaser.Scene {
   private darkness?: Phaser.GameObjects.RenderTexture;
   private nextCarId = 1;
   private lowFuelWarned = false;
+  /** Solid themed scenery (crates/trees/rocks) — cars bounce off. */
+  private props: { x: number; y: number; r: number }[] = [];
+  private lastPropBumpAt = 0;
 
   constructor() {
     super('arena');
@@ -113,13 +116,21 @@ export class ArenaScene extends Phaser.Scene {
     this.bestRank = 99;
     this.nextCarId = 1;
     this.lowFuelWarned = false;
+    this.props = [];
+    this.lastPropBumpAt = 0;
   }
 
   create(): void {
     const size = this.arena.size;
     const pal = ENV_PALETTES[this.arena.envId];
 
-    this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.arena.envId}`);
+    // Day arenas share the race tracks' daylight themes; night stays dark.
+    if (this.arena.night) {
+      this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.arena.envId}`);
+    } else {
+      this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.arena.envId}-day`);
+    }
+    this.buildArenaScenery();
 
     // Arena walls with neon glow.
     const walls = this.add.graphics();
@@ -304,6 +315,61 @@ export class ArenaScene extends Phaser.Scene {
     this.spawnOrb(slot);
   }
 
+  /**
+   * Sparse themed obstacles matching the race tracks: crates in the
+   * city, trees in the forest, rocks/cacti in the desert, neon rocks in
+   * the wasteland. Solid — cars bounce off — but sparse enough that
+   * trail combat stays king.
+   */
+  private buildArenaScenery(): void {
+    const size = this.arena.size;
+    const env = this.arena.envId;
+    const night = this.arena.night;
+    const g = this.add.graphics().setDepth(2);
+    const count = 22;
+
+    for (let i = 0; i < count; i++) {
+      const x = 260 + Math.random() * (size - 520);
+      const y = 260 + Math.random() * (size - 520);
+      if (this.props.some((p) => Math.hypot(p.x - x, p.y - y) < p.r + 160)) continue;
+
+      if (env === 'forest') {
+        const r = 28 + Math.random() * 30;
+        g.fillStyle(0x243c1c, 0.4).fillCircle(x + 8, y + 8, r);
+        g.fillStyle(0x2e5c30, 1).fillCircle(x, y, r);
+        g.fillStyle(0x3f7a40, 1).fillCircle(x - r * 0.22, y - r * 0.22, r * 0.64);
+        g.fillStyle(0x54985a, 0.85).fillCircle(x - r * 0.34, y - r * 0.34, r * 0.32);
+        this.props.push({ x, y, r: r * 0.8 });
+      } else if (env === 'desert') {
+        if (Math.random() < 0.6) {
+          const r = 24 + Math.random() * 28;
+          g.fillStyle(0x6e5a40, 0.4).fillCircle(x + 7, y + 7, r);
+          g.fillStyle(0x9a815c, 1).fillCircle(x, y, r);
+          g.fillStyle(0xb09a70, 1).fillCircle(x - r * 0.2, y - r * 0.25, r * 0.62);
+          this.props.push({ x, y, r: r * 0.85 });
+        } else {
+          const r = 12 + Math.random() * 7;
+          g.fillStyle(0x2c5c28, 0.4).fillCircle(x + 4, y + 4, r);
+          g.fillStyle(0x3e8a38, 1).fillCircle(x, y, r);
+          g.fillStyle(0x54a84c, 1).fillCircle(x - r * 0.25, y - r * 0.25, r * 0.55);
+          g.fillStyle(0x3e8a38, 1).fillCircle(x - r * 1.1, y - r * 0.4, r * 0.45);
+          this.props.push({ x, y, r: r * 1.1 });
+        }
+      } else if (env === 'wasteland') {
+        const r = 26 + Math.random() * 30;
+        g.lineStyle(3, 0xff2ec4, night ? 0.4 : 0.25).strokeCircle(x, y, r + 2);
+        g.fillStyle(0x1c1024, 1).fillCircle(x, y, r);
+        g.fillStyle(0x2e1c3a, 1).fillCircle(x - r * 0.2, y - r * 0.25, r * 0.6);
+        this.props.push({ x, y, r: r * 0.85 });
+      } else {
+        // City: crate stacks.
+        const scale = 1.1 + Math.random() * 0.6;
+        this.add.image(x, y, 'crate').setDepth(2).setRotation(Math.random() * 0.6 - 0.3).setScale(scale);
+        this.props.push({ x, y, r: 16 * scale });
+      }
+    }
+  }
+
   private spawnHazards(): void {
     const defs: { kind: Hazard['kind']; count: number; texture: string; r: number }[] = [
       { kind: 'oil', count: this.arena.hazards.oil, texture: 'oil', r: 34 },
@@ -456,6 +522,32 @@ export class ArenaScene extends Phaser.Scene {
           if (car === this.player) sfx.scrapPickup();
           scrap.sprite.destroy();
           this.scraps.splice(i, 1);
+        }
+      }
+
+      // Solid themed scenery: push out and bounce.
+      for (const p of this.props) {
+        const pdx = car.x - p.x;
+        const pdy = car.y - p.y;
+        const minD = p.r + CAR_RADIUS;
+        const pd2 = pdx * pdx + pdy * pdy;
+        if (pd2 >= minD * minD || pd2 < 0.001) continue;
+        const pd = Math.sqrt(pd2);
+        const nx = pdx / pd;
+        const ny = pdy / pd;
+        car.x += nx * (minD - pd);
+        car.y += ny * (minD - pd);
+        const dot = car.vx * nx + car.vy * ny;
+        if (dot < 0) {
+          const e = 0.45;
+          car.vx -= (1 + e) * dot * nx;
+          car.vy -= (1 + e) * dot * ny;
+          car.speed *= 0.5;
+          if (car === this.player && time - this.lastPropBumpAt > 250) {
+            this.lastPropBumpAt = time;
+            sfx.bump();
+            this.cameras.main.shake(90, 0.004);
+          }
         }
       }
 

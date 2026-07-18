@@ -373,7 +373,10 @@ export class RaceScene extends Phaser.Scene {
    * crates/vents scattered on the sidewalks.
    */
   private drawScenery(): void {
-    if (!this.track.daylight) return;
+    if (!this.track.daylight) {
+      if (this.track.envId === 'wasteland') this.drawWastelandScenery();
+      return;
+    }
     if (this.track.envId === 'forest') {
       this.drawForestScenery();
       return;
@@ -590,6 +593,60 @@ export class RaceScene extends Phaser.Scene {
       if (d2 >= minD * minD || d2 < 0.001) continue;
       const d = Math.sqrt(d2);
       bounce(dx / d, dy / d, minD - d);
+    }
+  }
+
+  /** Toxic Wasteland trackside: neon-rimmed rocks (solid) + glowing pools. */
+  private drawWastelandScenery(): void {
+    const size = this.track.size;
+    const roadHalf = this.track.roadWidth / 2;
+    const pts = this.path.pts;
+    const minDistToRoad = (x: number, y: number): number => {
+      let best = Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const dx = pts[i].x - x;
+        const dy = pts[i].y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) best = d2;
+      }
+      return Math.sqrt(best);
+    };
+
+    const g = this.add.graphics().setDepth(0.5);
+    const placed: { x: number; y: number; r: number }[] = [];
+
+    // Jagged dark rocks with a magenta neon rim.
+    let rocks = 0;
+    for (let tries = 0; tries < 900 && rocks < 60; tries++) {
+      const r = 26 + this.rand() * 36;
+      const x = 90 + this.rand() * (size - 180);
+      const y = 90 + this.rand() * (size - 180);
+      const roadDist = minDistToRoad(x, y);
+      if (roadDist < roadHalf + r + 28) continue;
+      if (roadDist > 1000 && this.rand() < 0.55) continue;
+      if (placed.some((p) => Math.hypot(p.x - x, p.y - y) < (p.r + r) * 0.95)) continue;
+      placed.push({ x, y, r });
+      rocks++;
+
+      g.lineStyle(3, 0xff2ec4, 0.35).strokeCircle(x, y, r + 2);
+      g.fillStyle(0x1c1024, 1).fillCircle(x, y, r);
+      g.fillStyle(0x2e1c3a, 1).fillCircle(x - r * 0.2, y - r * 0.25, r * 0.6);
+      g.fillStyle(0x3e2850, 0.9).fillCircle(x - r * 0.32, y - r * 0.35, r * 0.3);
+      this.props.push({ x, y, r: r * 0.85 });
+    }
+
+    // Glowing toxic pools (decorative, off the racing line).
+    for (let i = 0; i < 30; i++) {
+      const x = 90 + this.rand() * (size - 180);
+      const y = 90 + this.rand() * (size - 180);
+      if (minDistToRoad(x, y) < roadHalf + 60) continue;
+      const s = 1.6 + this.rand() * 2.4;
+      this.add
+        .image(x, y, 'orb')
+        .setTint(0x7aff4a)
+        .setAlpha(0.3)
+        .setScale(s)
+        .setDepth(0.6);
     }
   }
 

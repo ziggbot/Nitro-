@@ -40,6 +40,7 @@ export class BootScene extends Phaser.Scene {
     this.makeDaylightCobbles();
     this.makeDaylightGrass();
     this.makeDaylightSand();
+    this.makeToxicGround();
     this.makeVent();
     this.makeCrate();
     this.makeAwning();
@@ -386,6 +387,42 @@ export class BootScene extends Phaser.Scene {
       for (let i = 0; i < 180; i++) {
         ctx.fillStyle = rand() < 0.5 ? '#b8975a' : '#d8ba7e';
         ctx.fillRect(rand() * 256, rand() * 256, 2, 2);
+      }
+    });
+  }
+
+  /** Toxic wasteland ground: cracked gray-green earth with glowing sludge. */
+  private makeToxicGround(): void {
+    this.canvasTexture('floor-wasteland-day', 256, 256, (ctx) => {
+      ctx.fillStyle = '#4a5244';
+      ctx.fillRect(0, 0, 256, 256);
+      let seed = 6673;
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      // Cracks.
+      ctx.strokeStyle = 'rgba(30, 36, 28, 0.7)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 22; i++) {
+        let x = rand() * 256;
+        let y = rand() * 256;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 4; s++) {
+          x += (rand() - 0.5) * 50;
+          y += (rand() - 0.5) * 50;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      // Dead patches + faint toxic glow specks.
+      for (let i = 0; i < 90; i++) {
+        const toxic = rand() < 0.25;
+        ctx.fillStyle = toxic ? 'rgba(122, 255, 74, 0.25)' : 'rgba(58, 66, 52, 0.7)';
+        ctx.beginPath();
+        ctx.arc(rand() * 256, rand() * 256, 2 + rand() * 5, 0, Math.PI * 2);
+        ctx.fill();
       }
     });
   }
