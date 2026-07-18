@@ -7,11 +7,13 @@ import { claimMission, missionDef, refreshMissions } from '../meta/Missions';
 import { levelForXp, xpProgress } from '../meta/Progression';
 import { loadSave, persistSave, type SaveData } from '../meta/SaveGame';
 import { unlockedArenas } from '../meta/Unlocks';
-import { bodyStyle, clearScene, fitToScreen, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
+import { bodyStyle, clearScene, fitToScreen, formatMs, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
+import { decodeGhost, type GhostData } from '../game/ghost';
 
 export class MenuScene extends Phaser.Scene {
   private save!: SaveData;
   private arenaIndex = 0;
+  private pendingGhost?: GhostData;
 
   constructor() {
     super('menu');
@@ -19,6 +21,9 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.save = loadSave();
+    // A friend's challenge link carries a ghost in the URL fragment.
+    const match = /#ghost=([A-Za-z0-9_-]+)/.exec(window.location.hash);
+    this.pendingGhost = match ? (decodeGhost(match[1]) ?? undefined) : undefined;
     refreshMissions(this.save, new Date());
     persistSave(this.save);
     this.arenaIndex = Math.max(0, ARENAS.findIndex((a) => a.id === this.save.selectedArena));
@@ -55,7 +60,7 @@ export class MenuScene extends Phaser.Scene {
     const narrow = isNarrow(this);
     if (narrow) this.buildNarrow();
     else this.buildWide();
-    fitToScreen(this, start, narrow ? 420 : 960, narrow ? 810 : 560);
+    fitToScreen(this, start, narrow ? 420 : 960, narrow ? 852 : 560);
   }
 
   // ---------- Wide (desktop / landscape) — 960×560 design canvas ----------
@@ -70,10 +75,16 @@ export class MenuScene extends Phaser.Scene {
     this.buildArenaSelector(480, 240, 330, 170);
 
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
-    const play = makeButton(this, 480, 384, 260, 54, '▶  ARENA', () => this.startRun(), PALETTE.lime);
+    const play = makeButton(this, 480, 380, 260, 50, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 480, 444, 260, 46, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
-    makeButton(this, 480, 498, 260, 38, '🔧 GARAGE', () => this.scene.start('garage'));
+    makeButton(this, 480, 434, 260, 44, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
+    if (this.pendingGhost) {
+      const g = this.pendingGhost;
+      makeButton(this, 480, 484, 300, 42, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
+      makeButton(this, 480, 530, 260, 32, '🔧 GARAGE', () => this.scene.start('garage'));
+    } else {
+      makeButton(this, 480, 486, 260, 38, '🔧 GARAGE', () => this.scene.start('garage'));
+    }
 
     this.buildMissions(688, 152, 264);
 
@@ -111,15 +122,21 @@ export class MenuScene extends Phaser.Scene {
     this.buildArenaSelector(210, 300, 384, 136);
 
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
-    const play = makeButton(this, 210, 408, 336, 52, '▶  ARENA', () => this.startRun(), PALETTE.lime);
+    const play = makeButton(this, 210, 404, 336, 48, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 210, 464, 336, 44, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
-    makeButton(this, 210, 514, 336, 38, '🔧 GARAGE', () => this.scene.start('garage'));
+    makeButton(this, 210, 456, 336, 42, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
+    if (this.pendingGhost) {
+      const g = this.pendingGhost;
+      makeButton(this, 210, 502, 336, 40, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
+      makeButton(this, 210, 544, 336, 32, '🔧 GARAGE', () => this.scene.start('garage'));
+    } else {
+      makeButton(this, 210, 506, 336, 38, '🔧 GARAGE', () => this.scene.start('garage'));
+    }
 
-    this.buildMissions(26, 560, 368);
+    this.buildMissions(26, 584, 368);
 
     this.add
-      .text(210, 796, 'A tribute to NITRO (1990)  ·  M: music', bodyStyle(10, hexToCss(PALETTE.uiDim)))
+      .text(210, 840, 'A tribute to NITRO (1990)  ·  M: music', bodyStyle(10, hexToCss(PALETTE.uiDim)))
       .setOrigin(0.5);
   }
 

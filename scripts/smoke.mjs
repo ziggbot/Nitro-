@@ -70,8 +70,8 @@ mobile.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
 await mobile.goto(BASE, { waitUntil: 'networkidle' });
 await mobile.waitForTimeout(2500);
 await mobile.screenshot({ path: `${OUT}/m1-menu.png` });
-// PLAY button in narrow design (420x810): (210,412) → screen ≈ (195,428).
-await mobile.touchscreen.tap(195, 428);
+// ARENA button in narrow design (420x852): (210,404) → screen ≈ (195,402).
+await mobile.touchscreen.tap(195, 402);
 await mobile.waitForTimeout(2500);
 await mobile.screenshot({ path: `${OUT}/m2-arena.png` });
 

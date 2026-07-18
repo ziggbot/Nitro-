@@ -14,6 +14,7 @@ import { music } from '../game/music';
 import { loadSave, type SaveData } from '../meta/SaveGame';
 import { raceRewards } from '../meta/Progression';
 import { makeExhaustFlames, updateExhaustFlames } from './ArenaScene';
+import { GhostPlayer, GhostRecorder, type GhostData } from '../game/ghost';
 
 interface RacerView {
   container: Phaser.GameObjects.Container;
@@ -52,6 +53,16 @@ export class RaceScene extends Phaser.Scene {
   player!: RacerEntry;
   private pickups: TrackPickup[] = [];
   private hazards: { kind: 'oil' | 'cone' | 'pothole'; x: number; y: number; r: number; sprite: Phaser.GameObjects.Image }[] = [];
+  /** Solid scenery: buildings (rects) and roadside props (circles). */
+  private buildings: { x: number; y: number; w: number; h: number }[] = [];
+  private props: { x: number; y: number; r: number }[] = [];
+  private lastBumpAt = 0;
+
+  // Ghost racing: replay a friend's run, record our own.
+  private ghostData?: GhostData;
+  private ghostPlayer?: GhostPlayer;
+  private ghostSprite?: Phaser.GameObjects.Container;
+  private recorder = new GhostRecorder();
 
   phase: 'countdown' | 'racing' | 'done' = 'countdown';
   private raceStart = 0;
@@ -65,9 +76,16 @@ export class RaceScene extends Phaser.Scene {
     super('race');
   }
 
-  init(data: { trackId?: string }): void {
+  init(data: { trackId?: string; ghost?: GhostData }): void {
     this.save = loadSave();
-    this.track = trackById(data.trackId ?? 'city-gp');
+    this.ghostData = data.ghost;
+    // A ghost challenge always races on the ghost's track.
+    this.track = trackById(this.ghostData?.trackId ?? data.trackId ?? 'city-gp');
+    this.ghostPlayer = this.ghostData ? new GhostPlayer(this.ghostData) : undefined;
+    this.recorder = new GhostRecorder();
+    this.buildings = [];
+    this.props = [];
+    this.lastBumpAt = 0;
     this.path = buildPath(this.track.controlPoints);
     this.lapsTotal = this.track.laps;
     this.racers = [];
@@ -176,6 +194,22 @@ export class RaceScene extends Phaser.Scene {
     cam.setZoom(zoom);
     if (this.renderer.type === Phaser.WEBGL) {
       cam.postFX.addBloom(0xffffff, 1, 1, 1.1, 0.6);
+    }
+
+    // A challenger's ghost car: translucent, no collision, pure replay.
+    if (this.ghostData) {
+      const ghostImg = this.add.image(0, 0, 'car-sports').setScale(CAR_SCALE).setTint(0xd8e8ff).setAlpha(0.4);
+      const ghostLabel = this.add
+        .text(0, -46, `👻 ${this.ghostData.name}`, {
+          fontFamily: '"Segoe UI", Arial, sans-serif',
+          fontSize: '13px',
+          color: '#cfe0ff',
+          stroke: '#000000',
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setAlpha(0.75);
+      this.ghostSprite = this.add.container(startPt.x, startPt.y, [ghostImg, ghostLabel]).setDepth(8);
     }
 
     this.scene.launch('racehud', { track: this.track, path: this.path });
@@ -307,6 +341,7 @@ export class RaceScene extends Phaser.Scene {
       if (roadDist > 1400 && Math.random() < 0.6) continue; // keep density near the track
       if (placed.some((p) => Math.hypot(p.x - cx, p.y - cy) < (p.r + halfDiag) * 0.85)) continue;
       placed.push({ x: cx, y: cy, r: halfDiag });
+      this.buildings.push({ x, y, w: bw, h: bh });
       buildings++;
 
       // Drop shadow, gold brick border, gray rooftop.
@@ -359,11 +394,60 @@ export class RaceScene extends Phaser.Scene {
       const ox = p.x + Math.cos(tangent + Math.PI / 2) * lateral * side;
       const oy = p.y + Math.sin(tangent + Math.PI / 2) * lateral * side;
       if (ox < 60 || oy < 60 || ox > size - 60 || oy > size - 60) continue;
+      const scale = 0.9 + Math.random() * 0.5;
       this.add
         .image(ox, oy, Math.random() < 0.7 ? 'crate' : 'vent')
         .setDepth(0.7)
         .setRotation(Math.random() * 0.5 - 0.25)
-        .setScale(0.9 + Math.random() * 0.5);
+        .setScale(scale);
+      this.props.push({ x: ox, y: oy, r: 15 * scale });
+    }
+  }
+
+  /** Solid scenery: push the car out and bounce it off buildings/props. */
+  private collideScenery(car: CarSim, time: number, isPlayer: boolean): void {
+    const bounce = (nx: number, ny: number, pen: number): void => {
+      car.x += nx * pen;
+      car.y += ny * pen;
+      const dot = car.vx * nx + car.vy * ny;
+      if (dot < 0) {
+        const e = 0.45; // restitution — a solid thud with a visible rebound
+        car.vx -= (1 + e) * dot * nx;
+        car.vy -= (1 + e) * dot * ny;
+        car.speed *= 0.45;
+        if (isPlayer && time - this.lastBumpAt > 250) {
+          this.lastBumpAt = time;
+          sfx.bump();
+          this.cameras.main.shake(90, 0.004);
+        }
+      }
+    };
+
+    for (const b of this.buildings) {
+      const cx = Phaser.Math.Clamp(car.x, b.x, b.x + b.w);
+      const cy = Phaser.Math.Clamp(car.y, b.y, b.y + b.h);
+      let dx = car.x - cx;
+      let dy = car.y - cy;
+      let d2 = dx * dx + dy * dy;
+      if (d2 >= CAR_RADIUS * CAR_RADIUS) continue;
+      if (d2 < 0.001) {
+        // Center inside the rect (teleport edge case): push toward nearest edge.
+        dx = car.x - (b.x + b.w / 2);
+        dy = car.y - (b.y + b.h / 2);
+        d2 = dx * dx + dy * dy || 1;
+      }
+      const d = Math.sqrt(d2);
+      bounce(dx / d, dy / d, CAR_RADIUS - Math.min(d, CAR_RADIUS));
+    }
+
+    for (const p of this.props) {
+      const dx = car.x - p.x;
+      const dy = car.y - p.y;
+      const minD = CAR_RADIUS + p.r;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= minD * minD || d2 < 0.001) continue;
+      const d = Math.sqrt(d2);
+      bounce(dx / d, dy / d, minD - d);
     }
   }
 
@@ -468,11 +552,13 @@ export class RaceScene extends Phaser.Scene {
     const rewards = raceRewards(this.player.finished ? finalPos : 0, this.racers.length, this.track.rewardMult);
     const timeMs = (this.player.finished ? this.player.finishTime : this.time.now) - this.raceStart;
 
-    this.time.delayedCall(this.player.finished ? 1600 : 900, () => {
+    const finished = this.player.finished;
+    const playerName = 'NitroDriver';
+    this.time.delayedCall(finished ? 1600 : 900, () => {
       this.scene.stop('racehud');
       this.scene.start('results', {
         race: {
-          position: this.player.finished ? finalPos : 0,
+          position: finished ? finalPos : 0,
           totalCars: this.racers.length,
           laps: Math.min(this.lapsTotal, this.player.tracker.lap),
           lapsTotal: this.lapsTotal,
@@ -482,6 +568,10 @@ export class RaceScene extends Phaser.Scene {
           trackName: this.track.name,
           rewards,
           boostMs: this.player.car.boostMs,
+          // Ghost challenge: our recording (for sharing) + the rival ghost (for rematch).
+          recording: finished ? this.recorder.toData(playerName, this.track.id, timeMs) : undefined,
+          ghost: this.ghostData,
+          ghostBeaten: this.ghostData && finished ? timeMs < this.ghostData.timeMs : undefined,
         },
       });
     });
@@ -517,6 +607,9 @@ export class RaceScene extends Phaser.Scene {
       const wasBoosting = car.boosting;
       car.update(dt, input);
       if (car.boosting && !wasBoosting && entry === this.player) sfx.boost();
+
+      // Buildings and roadside props are solid — crash and bounce.
+      this.collideScenery(car, time, entry === this.player);
 
       // Lap/progress tracking.
       if (racing) {
@@ -644,6 +737,16 @@ export class RaceScene extends Phaser.Scene {
     }
     const pc = this.player.car;
     sfx.setEngine(Phaser.Math.Clamp(Math.abs(pc.speed) / pc.stats.topSpeed, 0, 1), pc.boosting || pc.overdriveTimer > 0);
+
+    // Ghost racing: record our run, replay the challenger's.
+    if (racing) {
+      this.recorder.record(this.raceTimeMs, pc.x, pc.y, pc.heading);
+    }
+    if (this.ghostSprite && this.ghostPlayer && this.phase !== 'countdown') {
+      const g = this.ghostPlayer.at(this.raceTimeMs);
+      this.ghostSprite.setPosition(g.x, g.y);
+      (this.ghostSprite.list[0] as Phaser.GameObjects.Image).setRotation(g.heading);
+    }
   }
 
   get raceTimeMs(): number {

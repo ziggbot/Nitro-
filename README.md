@@ -35,6 +35,18 @@ over. Just like 1990.
 - **Zero binary assets** — all art is hand-authored SVG + procedural canvas textures on a
   single synthwave palette; all sound is synthesized live with WebAudio.
 
+## Multiplayer
+
+**Ghost challenges (live now):** finish a race and hit *Challenge a friend* — the whole run
+is compressed into a share link (`#ghost=...`, no server needed). Your friend opens the
+link and races your translucent ghost; beat the time, send back a new link.
+
+**Toward live multiplayer:** car input flows through the `Driver` interface and `CarSim`
+is deterministic and Phaser-free, so real-time play needs only a `NetworkDriver` feeding
+remote inputs plus a small WebSocket room server (e.g. Node + `ws` on Fly/Railway) that
+relays inputs and periodic state snapshots. The ghost wire format in `src/game/ghost.ts`
+doubles as the starting point for state serialization.
+
 ## Development
 
 ```bash

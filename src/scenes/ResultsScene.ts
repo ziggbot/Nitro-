@@ -7,6 +7,7 @@ import { refreshMissions, touchStreak, trackRun } from '../meta/Missions';
 import { levelForXp } from '../meta/Progression';
 import { loadSave, persistSave } from '../meta/SaveGame';
 import { bodyStyle, clearScene, fitToScreen, formatMs, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
+import { encodeGhost, type GhostData } from '../game/ghost';
 
 export interface RaceResultData {
   position: number; // 0 = DNF
@@ -19,6 +20,11 @@ export interface RaceResultData {
   trackName: string;
   rewards: { xp: number; scrap: number; stars: number };
   boostMs: number;
+  /** Our finished run, encodable into a challenge link. */
+  recording?: GhostData;
+  /** The ghost we raced against (for rematches + verdict). */
+  ghost?: GhostData;
+  ghostBeaten?: boolean;
 }
 
 /** End-of-run screen (arena runs AND races). Banks rewards exactly once. */
@@ -142,6 +148,11 @@ export class ResultsScene extends Phaser.Scene {
       headline = race.position === 1 ? '🏆 VICTORY!' : race.position > 0 ? `FINISHED #${race.position}` : 'DNF!';
       headlineColor = race.position === 1 ? PALETTE.gold : race.position > 0 ? PALETTE.lime : PALETTE.red;
       subtitle = race.position > 0 ? '' : 'Out of fuel — grab more jerry cans next time';
+      if (race.ghost && race.ghostBeaten !== undefined) {
+        subtitle = race.ghostBeaten
+          ? `👻 You beat ${race.ghost.name}'s ${formatMs(race.ghost.timeMs)}!`
+          : `👻 ${race.ghost.name}'s ${formatMs(race.ghost.timeMs)} still stands`;
+      }
       starCount = race.rewards.stars;
       contextLine = `+${this.newTrophies} trophies  ·  🏁 ${race.trackName}`;
       rows = [
@@ -206,20 +217,34 @@ export class ResultsScene extends Phaser.Scene {
     }
 
     const again = (): void => {
-      if (this.race) this.scene.start('race', { trackId: this.race.trackId });
+      if (this.race) this.scene.start('race', { trackId: this.race.trackId, ghost: this.race.ghost });
       else this.scene.start('arena', { arenaId: this.arenaId });
     };
+
+    // Ghost challenge: copy a share link so a friend can race this run.
+    if (this.race?.recording) {
+      const recording = this.race.recording;
+      const btn = makeButton(this, cx, narrow ? 486 : 476, narrow ? 340 : 320, narrow ? 40 : 36, '🔗 CHALLENGE A FRIEND', () => {
+        const url = `${location.origin}${location.pathname}#ghost=${encodeGhost(recording)}`;
+        const done = (): void => btn.setLabel('✓ LINK COPIED — SEND IT!');
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(url).then(done, () => window.prompt('Copy this challenge link:', url));
+        } else {
+          window.prompt('Copy this challenge link:', url);
+        }
+      }, PALETTE.violet);
+    }
     const againLabel = this.race ? '↻ RACE AGAIN' : '↻ PLAY AGAIN';
     let DH: number;
     if (narrow) {
-      makeButton(this, cx, 512, 340, 56, againLabel, again, PALETTE.lime);
-      makeButton(this, cx, 574, 340, 48, '🏠 MAIN MENU', () => this.scene.start('menu'), PALETTE.cyan);
-      makeButton(this, cx, 630, 340, 40, '🔧 GARAGE', () => this.scene.start('garage'), PALETTE.uiDim);
-      DH = 680;
+      makeButton(this, cx, 542, 340, 54, againLabel, again, PALETTE.lime);
+      makeButton(this, cx, 600, 340, 48, '🏠 MAIN MENU', () => this.scene.start('menu'), PALETTE.cyan);
+      makeButton(this, cx, 654, 340, 40, '🔧 GARAGE', () => this.scene.start('garage'), PALETTE.uiDim);
+      DH = 700;
     } else {
-      makeButton(this, cx - 190, 512, 220, 54, againLabel, again, PALETTE.lime);
-      makeButton(this, cx + 15, 512, 170, 54, '🏠 MAIN MENU', () => this.scene.start('menu'), PALETTE.cyan);
-      makeButton(this, cx + 195, 512, 160, 54, '🔧 GARAGE', () => this.scene.start('garage'), PALETTE.uiDim);
+      makeButton(this, cx - 190, 522, 220, 52, againLabel, again, PALETTE.lime);
+      makeButton(this, cx + 15, 522, 170, 52, '🏠 MAIN MENU', () => this.scene.start('menu'), PALETTE.cyan);
+      makeButton(this, cx + 195, 522, 160, 52, '🔧 GARAGE', () => this.scene.start('garage'), PALETTE.uiDim);
       DH = 560;
     }
 
