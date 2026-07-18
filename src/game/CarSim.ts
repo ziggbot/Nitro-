@@ -126,7 +126,7 @@ export class CarSim {
       this.heading += this.spinDir * 9 * dt;
     } else {
       // Low-speed steering is weaker so cars can't pivot in place.
-      const effectiveness = Math.min(1, Math.abs(this.speed) / 120 + 0.25);
+      const effectiveness = Math.min(1, Math.abs(this.speed) / 100 + 0.45);
       this.heading += input.steer * s.turnRate * effectiveness * dt;
     }
 

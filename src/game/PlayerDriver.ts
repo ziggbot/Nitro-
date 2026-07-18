@@ -41,7 +41,7 @@ export class PlayerDriver implements Driver {
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
       return {
-        steer: Phaser.Math.Clamp(diff * 2.5, -1, 1),
+        steer: Phaser.Math.Clamp(diff * 3.5, -1, 1),
         throttle: 1,
         boost: touchControls.boostHeld || this.keys.SPACE.isDown,
       };
@@ -63,7 +63,7 @@ export class PlayerDriver implements Driver {
       while (diff < -Math.PI) diff += Math.PI * 2;
       const dist = Phaser.Math.Distance.Between(world.x, world.y, this.car.x, this.car.y);
       return {
-        steer: Phaser.Math.Clamp(diff * 2.5, -1, 1),
+        steer: Phaser.Math.Clamp(diff * 3.5, -1, 1),
         // Pointer very close to the car = ease off, .io style.
         throttle: dist < 40 ? 0.2 : 1,
         boost: pointer.isDown || this.keys.SPACE.isDown || touchControls.boostHeld,
