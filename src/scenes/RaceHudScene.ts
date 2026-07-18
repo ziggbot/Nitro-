@@ -65,10 +65,12 @@ export class RaceHudScene extends Phaser.Scene {
 
     new TouchControlsOverlay(this, this.mapSize).build();
 
-    // Lap banners.
+    // Lap + blackout banners.
     this.raceScene.events.on('lap', this.onLap, this);
+    this.raceScene.events.on('blackout', this.onBlackout, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.raceScene.events.off('lap', this.onLap, this);
+      this.raceScene.events.off('blackout', this.onBlackout, this);
     });
     this.input.keyboard?.on('keydown-M', () => music.toggleMute());
   }
@@ -86,6 +88,20 @@ export class RaceHudScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(70);
     this.tweens.add({ targets: banner, alpha: 0, y: banner.y - 40, duration: 1400, ease: 'Cubic.out', onComplete: () => banner.destroy() });
+  }
+
+  private onBlackout(): void {
+    const banner = this.add
+      .text(this.scale.width / 2, this.scale.height * 0.26, '⚡ BLACKOUT!', {
+        fontFamily: FONTS.title,
+        fontSize: '40px',
+        color: hexToCss(PALETTE.violet),
+        stroke: '#000',
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(70);
+    this.tweens.add({ targets: banner, alpha: 0, y: banner.y - 34, duration: 1300, ease: 'Cubic.out', onComplete: () => banner.destroy() });
   }
 
   update(time: number): void {

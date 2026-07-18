@@ -90,6 +90,13 @@ export class RaceScene extends Phaser.Scene {
   private remoteTargets = new Map<string, StateMsg>();
   private lastNetSend = 0;
 
+  // Wasteland blackouts: pitch black except headlights, exhaust, outline.
+  private blackoutWindows: { start: number; end: number }[] = [];
+  private blackoutAlpha = 0;
+  private blackoutActive = false;
+  private darkness?: Phaser.GameObjects.RenderTexture;
+  private outlineGfx?: Phaser.GameObjects.Graphics;
+
   phase: 'countdown' | 'racing' | 'done' = 'countdown';
   private raceStart = 0;
   private countdownStep = 0;
@@ -131,6 +138,16 @@ export class RaceScene extends Phaser.Scene {
     this.finishedCount = 0;
     this.pickupsCollected = 0;
     this.offRoad = false;
+    this.blackoutWindows = [];
+    this.blackoutAlpha = 0;
+    this.blackoutActive = false;
+    this.darkness = undefined;
+    this.outlineGfx = undefined;
+  }
+
+  /** Blackouts strike on the night wasteland circuit. */
+  private get hasBlackouts(): boolean {
+    return this.track.envId === 'wasteland' && !this.track.daylight;
   }
 
   create(): void {
@@ -274,6 +291,8 @@ export class RaceScene extends Phaser.Scene {
         .setAlpha(0.75);
       this.ghostSprite = this.add.container(startPt.x, startPt.y, [ghostImg, ghostLabel]).setDepth(8);
     }
+
+    if (this.hasBlackouts) this.setupBlackouts();
 
     this.scene.launch('racehud', { track: this.track, path: this.path });
     sfx.startEngine(this.save.selectedFuel);
@@ -1044,6 +1063,8 @@ export class RaceScene extends Phaser.Scene {
       });
     }
 
+    this.updateBlackout(dt);
+
     // Ghost racing: record our run, replay the challenger's.
     if (racing) {
       this.recorder.record(this.raceTimeMs, pc.x, pc.y, pc.heading);
@@ -1052,6 +1073,105 @@ export class RaceScene extends Phaser.Scene {
       const g = this.ghostPlayer.at(this.raceTimeMs);
       this.ghostSprite.setPosition(g.x, g.y);
       (this.ghostSprite.list[0] as Phaser.GameObjects.Image).setRotation(g.heading);
+    }
+  }
+
+  // ---------- Wasteland blackouts ----------
+
+  /**
+   * Seeded blackout schedule (identical for all multiplayer clients),
+   * a full-screen darkness layer with headlight erases, and a neon
+   * outline of the road edges that only shows in the dark.
+   */
+  private setupBlackouts(): void {
+    let t = 7000 + this.rand() * 7000;
+    for (let i = 0; i < 14; i++) {
+      const duration = 3500 + this.rand() * 3500;
+      this.blackoutWindows.push({ start: t, end: t + duration });
+      t += duration + 8000 + this.rand() * 10000;
+    }
+
+    // Road-edge outline, hidden until the lights go out.
+    const g = this.add.graphics().setDepth(56).setAlpha(0);
+    g.lineStyle(3, 0xff2ec4, 0.95);
+    const pts = this.path.pts;
+    const n = pts.length;
+    const half = this.track.roadWidth / 2 + 4;
+    for (const side of [-1, 1]) {
+      g.beginPath();
+      for (let i = 0; i <= n; i += 2) {
+        const p = pts[i % n];
+        const q = pts[(i + 2) % n];
+        const perp = Math.atan2(q.y - p.y, q.x - p.x) + Math.PI / 2;
+        const x = p.x + Math.cos(perp) * half * side;
+        const y = p.y + Math.sin(perp) * half * side;
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.strokePath();
+    }
+    this.outlineGfx = g;
+
+    // Darkness overlay sized to the camera's visible world rect (zoom-aware).
+    const zoom = this.cameras.main.zoom;
+    const w = Math.ceil(this.scale.width / zoom);
+    const h = Math.ceil(this.scale.height / zoom);
+    this.darkness = this.add.renderTexture(0, 0, w, h);
+    this.darkness
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(50)
+      .setPosition((this.scale.width - w) / 2, (this.scale.height - h) / 2)
+      .setVisible(false);
+  }
+
+  private updateBlackout(dt: number): void {
+    if (!this.darkness || this.phase === 'countdown') return;
+    const raceTime = this.raceTimeMs;
+    const inWindow = this.blackoutWindows.some((w) => raceTime >= w.start && raceTime < w.end);
+
+    if (inWindow && !this.blackoutActive) {
+      this.blackoutActive = true;
+      sfx.lowFuel();
+      this.events.emit('blackout');
+    } else if (!inWindow && this.blackoutActive) {
+      this.blackoutActive = false;
+    }
+
+    // Fade the dark in fast, out a little slower.
+    const target = inWindow ? 1 : 0;
+    const rate = inWindow ? dt / 0.5 : dt / 0.8;
+    this.blackoutAlpha = Phaser.Math.Clamp(this.blackoutAlpha + (target > this.blackoutAlpha ? rate : -rate), 0, 1);
+
+    const dark = this.blackoutAlpha > 0.01;
+    this.darkness.setVisible(dark);
+    this.outlineGfx?.setAlpha(this.blackoutAlpha);
+    // Exhaust flames glow above the darkness while it's active.
+    for (const entry of this.racers) entry.view.flames.setDepth(dark ? 55 : 9);
+    if (this.ghostSprite) this.ghostSprite.setAlpha(dark ? 0.12 : 1);
+    if (!dark) return;
+
+    // Redraw: pitch black, erased by headlight cones and small pools.
+    const rt = this.darkness;
+    const cam = this.cameras.main;
+    rt.clear();
+    rt.fill(0x000004, 0.985 * this.blackoutAlpha);
+    for (const entry of this.racers) {
+      const car = entry.car;
+      const sx = car.x - cam.worldView.x;
+      const sy = car.y - cam.worldView.y;
+      if (sx < -300 || sy < -300 || sx > rt.width + 300 || sy > rt.height + 300) continue;
+      const isPlayer = entry === this.player;
+      const pool = this.make.image({ x: sx, y: sy, key: 'glow', add: false }).setScale(isPlayer ? 1.4 : 0.8);
+      rt.erase(pool, sx, sy);
+      pool.destroy();
+      const light = this.make
+        .image({ x: sx, y: sy, key: 'headlight', add: false })
+        .setOrigin(0.09, 0.5)
+        .setRotation(car.heading)
+        .setScale(isPlayer ? 1.5 : 0.8);
+      rt.erase(light, sx, sy);
+      light.destroy();
     }
   }
 

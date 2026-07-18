@@ -63,6 +63,13 @@ export class ExhaustFx {
     }
   }
 
+  /** Raise above a darkness overlay so flames glow through blackouts. */
+  setDepth(depth: number): void {
+    this.jet.setDepth(depth);
+    this.jetBoost.setDepth(depth);
+    this.smoke?.setDepth(depth - 1);
+  }
+
   update(car: CarSim, rearOffset: number): void {
     const hot = car.alive && (car.boosting || car.overdriveTimer > 0);
     const idle = car.alive && Math.abs(car.speed) > 70;
