@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { arenaById, type ArenaDef } from '../config/arenas';
 import { CAR_CLASSES, effectiveStats } from '../config/cars';
-import { PAINTS } from '../config/cosmetics';
 import { fuelById, randomFuel, type FuelDef } from '../config/fuels';
 import { ENV_PALETTES, PALETTE } from '../config/palette';
 import type { CauseOfDeath, Driver, RunResult } from '../core/types';
@@ -134,16 +133,13 @@ export class ArenaScene extends Phaser.Scene {
     // Rare NITRO barrels, the original game's power-up.
     for (let i = 0; i < 6; i++) this.spawnBarrel();
 
-    // Player car with saved cosmetics, fuel type + garage upgrades.
+    // Player car: garage class sets the stats, fuel type sets the look.
     const classDef = CAR_CLASSES.find((c) => c.id === this.save.selectedCar) ?? CAR_CLASSES[0];
-    const paint = PAINTS.find((p) => p.id === this.save.selectedPaint) ?? PAINTS[0];
     const playerFuel = fuelById(this.save.selectedFuel);
     this.playerDriver = new PlayerDriver(this, 'YOU');
     this.player = this.addCar(
       this.playerDriver,
       effectiveStats(classDef.id, this.save.upgrades[classDef.id] ?? {}),
-      classDef.texture,
-      paint.tint,
       playerFuel,
       true,
     );
@@ -171,8 +167,8 @@ export class ArenaScene extends Phaser.Scene {
     this.runStart = this.time.now;
     this.scene.launch('hud', { arena: this.arena });
 
-    // Audio: engine hum + keep the soundtrack rolling.
-    sfx.startEngine();
+    // Audio: fuel-typed engine sound + keep the soundtrack rolling.
+    sfx.startEngine(playerFuel.id);
     music.start();
     this.input.once('pointerdown', () => music.start());
 
@@ -220,17 +216,15 @@ export class ArenaScene extends Phaser.Scene {
   private addCar(
     driver: Driver,
     stats: ReturnType<typeof effectiveStats>,
-    texture: string,
-    tint: number,
     fuel: FuelDef,
     isPlayer: boolean,
   ): CarSim {
-    const car = new CarSim(this.nextCarId++, driver, stats, tint, fuel.trailColors);
+    const car = new CarSim(this.nextCarId++, driver, stats, fuel.color, fuel.trailColors);
     car.fuelId = fuel.id;
     const pos = this.randomOpenPos(isPlayer ? 600 : 250);
     car.spawnAt(pos.x, pos.y, Math.random() * Math.PI * 2);
 
-    const sprite = this.add.image(0, 0, texture).setScale(CAR_SCALE).setTint(tint);
+    const sprite = this.add.image(0, 0, fuel.texture).setScale(CAR_SCALE).setTint(fuel.color);
     const label = this.add
       .text(0, -46, driver.name, {
         fontFamily: '"Segoe UI", Arial, sans-serif',
@@ -252,8 +246,7 @@ export class ArenaScene extends Phaser.Scene {
   private spawnBot(name: string): void {
     const driver = new BotDriver(name, randomPersonality());
     const classDef = CAR_CLASSES[Math.floor(Math.random() * CAR_CLASSES.length)];
-    const paint = PAINTS[Math.floor(Math.random() * PAINTS.length)];
-    const car = this.addCar(driver, { ...classDef.base }, classDef.texture, paint.tint, randomFuel(), false);
+    const car = this.addCar(driver, { ...classDef.base }, randomFuel(), false);
     // Bots start with a bit of random progress so the arena feels lived-in.
     car.trailLimit = MIN_TRAIL + Math.floor(Math.random() * 40);
     driver.car = car;

@@ -13,19 +13,23 @@ export class ExhaustFx {
 
   constructor(scene: Phaser.Scene, car: CarSim, fuel: FuelDef) {
     const electric = fuel.flicker;
+    const rocket = fuel.smoke; // gas = rocket-style jet plume
     const tints = fuel.exhaustTints;
+    // Rocket plume: tight cone, fast straight particles, long tail.
+    // Electric: wide short sharp sparks. Petrol: classic fire spray.
+    const spread = rocket ? 7 : electric ? 24 : 15;
     this.jet = scene.add.particles(0, 0, 'dot', {
-      speed: electric ? { min: 120, max: 260 } : { min: 80, max: 190 },
+      speed: rocket ? { min: 260, max: 400 } : electric ? { min: 120, max: 260 } : { min: 80, max: 190 },
       angle: {
-        onEmit: () => Phaser.Math.RadToDeg(car.heading + Math.PI) + (Math.random() * (electric ? 48 : 30) - (electric ? 24 : 15)),
+        onEmit: () => Phaser.Math.RadToDeg(car.heading + Math.PI) + (Math.random() * spread * 2 - spread),
       },
-      x: { min: -6, max: 6 },
-      y: { min: -6, max: 6 },
-      scale: { start: electric ? 1.2 : 1.7, end: 0 },
+      x: { min: -4, max: 4 },
+      y: { min: -4, max: 4 },
+      scale: rocket ? { start: 1.5, end: 0.1 } : { start: electric ? 1.2 : 1.7, end: 0 },
       alpha: { start: 0.95, end: 0 },
-      lifespan: electric ? { min: 70, max: 190 } : { min: 150, max: 330 },
+      lifespan: rocket ? { min: 220, max: 460 } : electric ? { min: 70, max: 190 } : { min: 150, max: 330 },
       frequency: 16,
-      quantity: 2,
+      quantity: rocket ? 3 : 2,
       tint: { onEmit: () => tints[Math.floor(Math.random() * tints.length)] },
       blendMode: Phaser.BlendModes.ADD,
       emitting: false,

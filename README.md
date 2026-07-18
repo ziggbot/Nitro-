@@ -37,15 +37,17 @@ over. Just like 1990.
 
 ## Multiplayer
 
-**Ghost challenges (live now):** finish a race and hit *Challenge a friend* — the whole run
+**Live races with friends (QR invite):** tap *👥 FRIENDS* in the menu — the game hosts a
+P2P room over WebRTC (PeerJS public signaling, no server of our own) and shows a QR code.
+Friends scan it (or open the link), appear in the lobby, and the host starts a live race
+where everyone drives in the same world (`src/net/room.ts`, `LobbyScene`). Positions are
+exchanged peer-to-peer ~15×/s with the host relaying between guests; the trackside is
+generated from a shared seed so all clients see the same world. Note: strict corporate
+networks that block WebRTC can prevent connections.
+
+**Ghost challenges (async):** finish a race and hit *Challenge a friend* — the whole run
 is compressed into a share link (`#ghost=...`, no server needed). Your friend opens the
 link and races your translucent ghost; beat the time, send back a new link.
-
-**Toward live multiplayer:** car input flows through the `Driver` interface and `CarSim`
-is deterministic and Phaser-free, so real-time play needs only a `NetworkDriver` feeding
-remote inputs plus a small WebSocket room server (e.g. Node + `ws` on Fly/Railway) that
-relays inputs and periodic state snapshots. The ghost wire format in `src/game/ghost.ts`
-doubles as the starting point for state serialization.
 
 ## Development
 

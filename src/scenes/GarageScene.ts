@@ -1,18 +1,16 @@
 import Phaser from 'phaser';
 import { CAR_CLASSES, UPGRADES, effectiveStats } from '../config/cars';
-import { PAINTS } from '../config/cosmetics';
-import { FUELS } from '../config/fuels';
+import { FUELS, fuelById } from '../config/fuels';
 import { PALETTE, hexToCss } from '../config/palette';
 import { sfx } from '../game/sfx';
 import { levelForXp } from '../meta/Progression';
 import { loadSave, persistSave, type SaveData } from '../meta/SaveGame';
-import { buyUpgrade, unlockedCars, unlockedPaints } from '../meta/Unlocks';
+import { buyUpgrade, unlockedCars } from '../meta/Unlocks';
 import { bodyStyle, clearScene, fitToScreen, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
 
 /** The modernized Nitro pit stop: cars, upgrades, cosmetics. */
 export class GarageScene extends Phaser.Scene {
   private save!: SaveData;
-  private root?: Phaser.GameObjects.Container;
 
   constructor() {
     super('garage');
@@ -41,7 +39,7 @@ export class GarageScene extends Phaser.Scene {
     const narrow = isNarrow(this);
     if (narrow) this.buildNarrow();
     else this.buildWide();
-    this.root = fitToScreen(this, start, narrow ? 420 : 960, narrow ? 1150 : 600);
+    fitToScreen(this, start, narrow ? 420 : 960, narrow ? 1020 : 600);
   }
 
   // ---------- Wide (desktop / landscape) — 960×600 ----------
@@ -59,10 +57,8 @@ export class GarageScene extends Phaser.Scene {
     UPGRADES.forEach((_, i) => this.buildUpgradeRow(i, 480, 168 + i * 64, 320, 56, false));
     this.buildEffectiveLine(320, 168 + UPGRADES.length * 64 - 16, 11);
 
-    this.add.text(650, 100, 'PAINT', titleStyle(16, hexToCss(PALETTE.uiText)));
-    this.buildPaints(672, 150, 58, 4);
-    this.add.text(650, 268, 'FUEL TYPE', titleStyle(16, hexToCss(PALETTE.uiText)));
-    this.buildFuels(790, 302, 44, 280);
+    this.add.text(650, 100, 'FUEL TYPE — sets shape, color & trail', titleStyle(15, hexToCss(PALETTE.uiText)));
+    this.buildFuels(790, 150, 52, 280);
 
     makeButton(this, 480, 566, 220, 44, '← BACK TO MENU', () => this.scene.start('menu'));
   }
@@ -83,15 +79,11 @@ export class GarageScene extends Phaser.Scene {
     UPGRADES.forEach((_, i) => this.buildUpgradeRow(i, 210, upTop + 32 + i * 60, 384, 52, true));
     this.buildEffectiveLine(24, upTop + 32 + UPGRADES.length * 60 - 12, 10);
 
-    const paintTop = upTop + 32 + UPGRADES.length * 60 + 26;
-    this.add.text(24, paintTop - 20, 'PAINT', titleStyle(15, hexToCss(PALETTE.uiText)));
-    this.buildPaints(48, paintTop + 26, 52, 7);
+    const fuelTop = upTop + 32 + UPGRADES.length * 60 + 30;
+    this.add.text(24, fuelTop - 18, 'FUEL TYPE — sets shape, color & trail', titleStyle(14, hexToCss(PALETTE.uiText)));
+    this.buildFuels(210, fuelTop + 26, 46, 384);
 
-    const fuelTop = paintTop + 84;
-    this.add.text(24, fuelTop - 18, 'FUEL TYPE', titleStyle(15, hexToCss(PALETTE.uiText)));
-    this.buildFuels(210, fuelTop + 26, 42, 384);
-
-    makeButton(this, 210, fuelTop + 26 + FUELS.length * 42 + 28, 300, 46, '← BACK TO MENU', () => this.scene.start('menu'));
+    makeButton(this, 210, fuelTop + 26 + FUELS.length * 46 + 28, 300, 46, '← BACK TO MENU', () => this.scene.start('menu'));
   }
 
   // ---------- Shared building blocks ----------
@@ -109,7 +101,7 @@ export class GarageScene extends Phaser.Scene {
 
     const left = cx - pw / 2;
     const img = this.add.image(left + 46, cy, def.texture).setScale(compact ? 0.5 : 0.6);
-    img.setTint(owned ? (PAINTS.find((p) => p.id === this.save.selectedPaint)?.tint ?? 0xffffff) : 0x333a4a);
+    img.setTint(owned ? fuelById(this.save.selectedFuel).color : 0x333a4a);
 
     const textX = left + 92;
     this.add.text(textX, cy - ph / 2 + 8, def.name, bodyStyle(14, hexToCss(owned ? PALETTE.cyan : 0x667088)));
@@ -173,31 +165,6 @@ export class GarageScene extends Phaser.Scene {
     );
   }
 
-  private buildPaints(startX: number, startY: number, cell: number, perRow: number): void {
-    const owned = unlockedPaints(this.save);
-    PAINTS.forEach((paint, i) => {
-      const x = startX + (i % perRow) * cell;
-      const y = startY + Math.floor(i / perRow) * cell;
-      const has = owned.includes(paint.id);
-      const selected = this.save.selectedPaint === paint.id;
-      const swatch = this.add
-        .rectangle(x, y, cell - 12, cell - 12, has ? paint.tint : 0x24304a, 1)
-        .setStrokeStyle(selected ? 4 : 2, selected ? 0xffffff : PALETTE.uiPanelStroke);
-      swatch.setInteractive({ useHandCursor: has }).on('pointerup', (pointer: Phaser.Input.Pointer) => {
-        if (pointer.getDistance() > 16) return;
-        if (has) {
-          sfx.click();
-          this.save.selectedPaint = paint.id;
-          persistSave(this.save);
-          this.buildUi();
-        } else {
-          this.showTip(x, y + cell * 0.7, paint.unlock.label);
-        }
-      });
-      if (!has) this.add.text(x, y, '🔒', bodyStyle(13)).setOrigin(0.5);
-    });
-  }
-
   /** Fuel type: free choice, defines the car's trail & exhaust identity. */
   private buildFuels(cx: number, startY: number, rowH: number, pw: number): void {
     FUELS.forEach((fuel, i) => {
@@ -226,13 +193,4 @@ export class GarageScene extends Phaser.Scene {
     });
   }
 
-  /** Tooltip at design-space coordinates (added into the scaled root). */
-  private showTip(x: number, y: number, label: string): void {
-    const tip = this.add
-      .text(x, y, label, { ...bodyStyle(11), backgroundColor: '#101828', padding: { x: 6, y: 3 } })
-      .setOrigin(0.5)
-      .setDepth(100);
-    this.root?.add(tip);
-    this.time.delayedCall(1800, () => tip.destroy());
-  }
 }

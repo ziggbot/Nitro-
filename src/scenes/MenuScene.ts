@@ -10,11 +10,13 @@ import { unlockedArenas } from '../meta/Unlocks';
 import { bodyStyle, clearScene, fitToScreen, formatMs, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
 import { decodeGhost, type GhostData } from '../game/ghost';
 import { FUELS } from '../config/fuels';
+import { trackForEnv } from '../config/tracks';
 
 export class MenuScene extends Phaser.Scene {
   private save!: SaveData;
   private arenaIndex = 0;
   private pendingGhost?: GhostData;
+  private pendingJoin?: string;
 
   constructor() {
     super('menu');
@@ -22,9 +24,12 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.save = loadSave();
-    // A friend's challenge link carries a ghost in the URL fragment.
-    const match = /#ghost=([A-Za-z0-9_-]+)/.exec(window.location.hash);
-    this.pendingGhost = match ? (decodeGhost(match[1]) ?? undefined) : undefined;
+    // A friend's challenge link carries a ghost in the URL fragment;
+    // a multiplayer invite carries a room code.
+    const ghostMatch = /#ghost=([A-Za-z0-9_-]+)/.exec(window.location.hash);
+    this.pendingGhost = ghostMatch ? (decodeGhost(ghostMatch[1]) ?? undefined) : undefined;
+    const joinMatch = /#join=([A-Z2-9]{5})/.exec(window.location.hash);
+    this.pendingJoin = joinMatch?.[1];
     refreshMissions(this.save, new Date());
     persistSave(this.save);
     this.arenaIndex = Math.max(0, ARENAS.findIndex((a) => a.id === this.save.selectedArena));
@@ -80,13 +85,16 @@ export class MenuScene extends Phaser.Scene {
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
     const play = makeButton(this, 480, 386, 260, 46, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 480, 434, 260, 44, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
-    if (this.pendingGhost) {
+    const raceTrack = trackForEnv(ARENAS[this.arenaIndex].envId);
+    makeButton(this, 480, 432, 260, 40, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
+    makeButton(this, 410, 474, 130, 34, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
+    makeButton(this, 550, 474, 130, 34, '🔧 GARAGE', () => this.scene.start('garage'));
+    if (this.pendingJoin) {
+      const code = this.pendingJoin;
+      makeButton(this, 480, 514, 300, 36, `👥 JOIN RACE ${code}`, () => this.scene.start('lobby', { mode: 'join', code }), PALETTE.lime);
+    } else if (this.pendingGhost) {
       const g = this.pendingGhost;
-      makeButton(this, 480, 484, 300, 42, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
-      makeButton(this, 480, 530, 260, 32, '🔧 GARAGE', () => this.scene.start('garage'));
-    } else {
-      makeButton(this, 480, 486, 260, 38, '🔧 GARAGE', () => this.scene.start('garage'));
+      makeButton(this, 480, 514, 300, 36, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
     }
 
     this.buildMissions(688, 152, 264);
@@ -128,13 +136,16 @@ export class MenuScene extends Phaser.Scene {
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
     const play = makeButton(this, 210, 428, 336, 42, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 210, 474, 336, 40, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
-    if (this.pendingGhost) {
+    const raceTrack = trackForEnv(ARENAS[this.arenaIndex].envId);
+    makeButton(this, 210, 472, 336, 38, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
+    makeButton(this, 123, 512, 162, 34, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
+    makeButton(this, 297, 512, 162, 34, '🔧 GARAGE', () => this.scene.start('garage'));
+    if (this.pendingJoin) {
+      const code = this.pendingJoin;
+      makeButton(this, 210, 552, 336, 34, `👥 JOIN RACE ${code}`, () => this.scene.start('lobby', { mode: 'join', code }), PALETTE.lime);
+    } else if (this.pendingGhost) {
       const g = this.pendingGhost;
-      makeButton(this, 210, 516, 336, 36, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
-      makeButton(this, 210, 554, 336, 30, '🔧 GARAGE', () => this.scene.start('garage'));
-    } else {
-      makeButton(this, 210, 518, 336, 36, '🔧 GARAGE', () => this.scene.start('garage'));
+      makeButton(this, 210, 552, 336, 34, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
     }
 
     this.buildMissions(26, 584, 368);

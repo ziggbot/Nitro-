@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 56" width="96" height="56">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#e8f2fa"/>
+      <stop offset="1" stop-color="#aebcd0"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0c1626"/>
+      <stop offset="1" stop-color="#1c3854"/>
+    </linearGradient>
+  </defs>
+  <!-- covered aero wheels -->
+  <rect x="16" y="5" width="15" height="7" rx="3.5" fill="#14161c"/>
+  <rect x="16" y="44" width="15" height="7" rx="3.5" fill="#14161c"/>
+  <rect x="62" y="6" width="14" height="7" rx="3.5" fill="#14161c"/>
+  <rect x="62" y="43" width="14" height="7" rx="3.5" fill="#14161c"/>
+  <!-- neon rim glow -->
+  <path d="M8 28 Q10 14 30 10 Q60 7 84 18 Q94 23 94 28 Q94 33 84 38 Q60 49 30 46 Q10 42 8 28 Z"
+        fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="4" stroke-linejoin="round"/>
+  <!-- smooth teardrop body -->
+  <path d="M8 28 Q10 14 30 10 Q60 7 84 18 Q94 23 94 28 Q94 33 84 38 Q60 49 30 46 Q10 42 8 28 Z"
+        fill="url(#body)"/>
+  <!-- wraparound canopy -->
+  <path d="M30 15 Q52 12 68 20 Q74 24 74 28 Q74 32 68 36 Q52 44 30 41 Q24 34 24 28 Q24 22 30 15 Z"
+        fill="url(#glass)"/>
+  <!-- LED light strip along the centerline -->
+  <rect x="12" y="26.6" width="78" height="2.8" rx="1.4" fill="#ffffff" opacity="0.95"/>
+  <!-- lightning decal -->
+  <path d="M46 18 L38 28 L44 28 L40 38 L50 27 L44 27 Z" fill="#ffffff" opacity="0.85"/>
+  <!-- sleek headlights -->
+  <path d="M88 24 L93 27 L93 29 L88 32 Q90 28 88 24 Z" fill="#eafcff"/>
+</svg>

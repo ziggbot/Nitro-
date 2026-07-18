@@ -45,8 +45,44 @@ export const TRACKS: TrackDef[] = [
       { x: 550, y: 2100 },
     ],
   },
+  {
+    id: 'forest-gp',
+    name: 'Forest Rally',
+    envId: 'forest',
+    size: 4200,
+    laps: 3,
+    botCount: 5,
+    daylight: true,
+    roadWidth: 150,
+    rewardMult: 1.3,
+    fuelPickups: 9,
+    barrels: 3,
+    hazards: { oil: 6, cones: 4, potholes: 8 },
+    // Winding rally loop with tighter corners than the city GP.
+    controlPoints: [
+      { x: 700, y: 700 },
+      { x: 1700, y: 950 },
+      { x: 2500, y: 600 },
+      { x: 3500, y: 900 },
+      { x: 3300, y: 1700 },
+      { x: 3650, y: 2400 },
+      { x: 3100, y: 3000 },
+      { x: 3350, y: 3600 },
+      { x: 2300, y: 3450 },
+      { x: 1600, y: 3000 },
+      { x: 950, y: 3550 },
+      { x: 520, y: 2700 },
+      { x: 1000, y: 1900 },
+      { x: 600, y: 1300 },
+    ],
+  },
 ];
 
 export function trackById(id: string): TrackDef {
   return TRACKS.find((t) => t.id === id) ?? TRACKS[0];
+}
+
+/** The race track matching an arena environment (menu RACE button). */
+export function trackForEnv(envId: string): TrackDef {
+  return TRACKS.find((t) => t.envId === envId) ?? TRACKS[0];
 }

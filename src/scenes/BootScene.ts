@@ -3,6 +3,8 @@ import { ENV_PALETTES, hexToCss } from '../config/palette';
 import carSportsUrl from '../../assets/svg/car-sports.svg?url';
 import carRacerUrl from '../../assets/svg/car-racer.svg?url';
 import carBuggyUrl from '../../assets/svg/car-buggy.svg?url';
+import carRocketUrl from '../../assets/svg/car-rocket.svg?url';
+import carElectricUrl from '../../assets/svg/car-electric.svg?url';
 
 /**
  * Generates every non-SVG texture procedurally at boot (floors, orbs,
@@ -17,6 +19,8 @@ export class BootScene extends Phaser.Scene {
     this.load.svg('car-sports', carSportsUrl, { width: 96, height: 56 });
     this.load.svg('car-racer', carRacerUrl, { width: 96, height: 56 });
     this.load.svg('car-buggy', carBuggyUrl, { width: 96, height: 56 });
+    this.load.svg('car-rocket', carRocketUrl, { width: 96, height: 56 });
+    this.load.svg('car-electric', carElectricUrl, { width: 96, height: 56 });
   }
 
   create(): void {
@@ -34,6 +38,7 @@ export class BootScene extends Phaser.Scene {
     this.makeWheel();
     this.makeKnob();
     this.makeDaylightCobbles();
+    this.makeDaylightGrass();
     this.makeVent();
     this.makeCrate();
     this.makeAwning();
@@ -328,6 +333,28 @@ export class BootScene extends Phaser.Scene {
         ctx.moveTo(0, y + 0.5);
         ctx.lineTo(256, y + 0.5);
         ctx.stroke();
+      }
+    });
+  }
+
+  /** Daylight forest grass tile with mottled tufts. */
+  private makeDaylightGrass(): void {
+    this.canvasTexture('floor-forest-day', 256, 256, (ctx) => {
+      ctx.fillStyle = '#5c7c40';
+      ctx.fillRect(0, 0, 256, 256);
+      let seed = 9137;
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      for (let i = 0; i < 420; i++) {
+        const shade = rand();
+        ctx.fillStyle = shade < 0.5 ? '#527238' : shade < 0.85 ? '#66884a' : '#4a6632';
+        const x = rand() * 256;
+        const y = rand() * 256;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 2 + rand() * 5, 1.5 + rand() * 3, rand() * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
       }
     });
   }

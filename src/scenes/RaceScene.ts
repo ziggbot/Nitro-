@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { trackById, type TrackDef } from '../config/tracks';
 import { CAR_CLASSES, effectiveStats } from '../config/cars';
-import { PAINTS } from '../config/cosmetics';
 import { ENV_PALETTES, PALETTE, hexToCss } from '../config/palette';
 import type { Driver } from '../core/types';
 import { botNames } from '../ai/names';
@@ -16,6 +15,7 @@ import { raceRewards } from '../meta/Progression';
 import { ExhaustFx } from '../game/exhaust';
 import { fuelById, randomFuel } from '../config/fuels';
 import { GhostPlayer, GhostRecorder, type GhostData } from '../game/ghost';
+import type { NetRoom, NetPlayer, StateMsg } from '../net/room';
 
 interface RacerView {
   container: Phaser.GameObjects.Container;
@@ -31,7 +31,16 @@ interface RacerEntry {
   view: RacerView;
   finished: boolean;
   finishTime: number;
+  /** Multiplayer: remote player's peer id (position comes from the net). */
+  netId?: string;
 }
+
+interface NetworkData {
+  room: NetRoom;
+  players: NetPlayer[];
+}
+
+const idleDriver: Driver = { name: 'remote', isPlayer: false, getInput: () => ({ steer: 0, throttle: 0, boost: false }) };
 
 interface TrackPickup {
   kind: 'fuel' | 'barrel';
@@ -44,6 +53,17 @@ interface TrackPickup {
 
 const CAR_RADIUS = 25;
 const CAR_SCALE = 1.0;
+
+/** Deterministic RNG so multiplayer clients build identical tracksides. */
+function mulberry32(a: number): () => number {
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export class RaceScene extends Phaser.Scene {
   private track!: TrackDef;
@@ -65,6 +85,11 @@ export class RaceScene extends Phaser.Scene {
   private ghostSprite?: Phaser.GameObjects.Container;
   private recorder = new GhostRecorder();
 
+  // Live multiplayer.
+  private net?: NetworkData;
+  private remoteTargets = new Map<string, StateMsg>();
+  private lastNetSend = 0;
+
   phase: 'countdown' | 'racing' | 'done' = 'countdown';
   private raceStart = 0;
   private countdownStep = 0;
@@ -77,8 +102,17 @@ export class RaceScene extends Phaser.Scene {
     super('race');
   }
 
-  init(data: { trackId?: string; ghost?: GhostData }): void {
+  /** Shared world seed (multiplayer clients pass the host's). */
+  worldSeed = 0;
+  private rand: () => number = Math.random;
+
+  init(data: { trackId?: string; ghost?: GhostData; seed?: number; network?: NetworkData }): void {
     this.save = loadSave();
+    this.net = data.network;
+    this.remoteTargets = new Map();
+    this.lastNetSend = 0;
+    this.worldSeed = data.seed ?? Math.floor(Math.random() * 2 ** 31);
+    this.rand = mulberry32(this.worldSeed);
     this.ghostData = data.ghost;
     // A ghost challenge always races on the ghost's track.
     this.track = trackById(this.ghostData?.trackId ?? data.trackId ?? 'city-gp');
@@ -103,7 +137,7 @@ export class RaceScene extends Phaser.Scene {
     const size = this.track.size;
 
     if (this.track.daylight) {
-      this.add.tileSprite(size / 2, size / 2, size, size, 'floor-city-day');
+      this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.track.envId}-day`);
     } else {
       this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.track.envId}`).setAlpha(0.55);
     }
@@ -123,12 +157,34 @@ export class RaceScene extends Phaser.Scene {
     const sideY = Math.sin(startAngle + Math.PI / 2);
 
     const classDef = CAR_CLASSES.find((c) => c.id === this.save.selectedCar) ?? CAR_CLASSES[0];
-    const paint = PAINTS.find((p) => p.id === this.save.selectedPaint) ?? PAINTS[0];
     const playerDriver = new PlayerDriver(this, 'YOU');
-    const names = botNames(this.track.botCount);
 
-    for (let slot = 0; slot <= this.track.botCount; slot++) {
-      const isPlayer = slot === 0; // pole position — you earned it
+    // Build the starting roster: real friends in multiplayer, bots solo.
+    // The shared players-array order gives every client the same grid.
+    interface RosterSlot {
+      kind: 'player' | 'bot' | 'remote';
+      name: string;
+      fuel: ReturnType<typeof fuelById>;
+      netId?: string;
+    }
+    const roster: RosterSlot[] = [];
+    if (this.net) {
+      for (const p of this.net.players) {
+        if (p.id === this.net.room.myId) {
+          roster.push({ kind: 'player', name: 'YOU', fuel: fuelById(p.fuel) });
+        } else {
+          roster.push({ kind: 'remote', name: p.name, fuel: fuelById(p.fuel), netId: p.id });
+        }
+      }
+    } else {
+      roster.push({ kind: 'player', name: 'YOU', fuel: fuelById(this.save.selectedFuel) });
+      for (const n of botNames(this.track.botCount)) {
+        roster.push({ kind: 'bot', name: n, fuel: randomFuel() });
+      }
+    }
+
+    for (let slot = 0; slot < roster.length; slot++) {
+      const spec = roster[slot];
       const row = Math.floor(slot / 2);
       const col = slot % 2 === 0 ? -1 : 1;
       const gx = startPt.x + backX * (60 + row * 70) + sideX * col * 42;
@@ -136,35 +192,33 @@ export class RaceScene extends Phaser.Scene {
 
       let driver: Driver;
       let stats;
-      let tint;
-      let texture;
-      if (isPlayer) {
+      if (spec.kind === 'player') {
         driver = playerDriver;
         stats = effectiveStats(classDef.id, this.save.upgrades[classDef.id] ?? {});
-        tint = paint.tint;
-        texture = classDef.texture;
-      } else {
+      } else if (spec.kind === 'bot') {
         const botClass = CAR_CLASSES[Math.floor(Math.random() * CAR_CLASSES.length)];
-        driver = new RaceBotDriver(names[slot - 1], this.path, startIdx);
+        driver = new RaceBotDriver(spec.name, this.path, startIdx);
         // Some rivals are genuinely faster than a stock player car.
         const variance = 0.98 + Math.random() * 0.1;
         stats = { ...botClass.base, topSpeed: botClass.base.topSpeed * variance };
-        tint = PAINTS[Math.floor(Math.random() * PAINTS.length)].tint;
-        texture = botClass.texture;
+      } else {
+        driver = idleDriver;
+        stats = { ...CAR_CLASSES[0].base };
       }
 
-      const fuel = isPlayer ? fuelById(this.save.selectedFuel) : randomFuel();
-      const car = new CarSim(slot + 1, driver, stats, tint, []);
+      // Fuel type sets the car's look: shape, color, exhaust.
+      const fuel = spec.fuel;
+      const car = new CarSim(slot + 1, driver, stats, fuel.color, []);
       car.freeBoost = true; // race mode: boost burns fuel only, Nitro style
       car.fuelId = fuel.id;
       car.spawnAt(gx, gy, startAngle);
 
-      const sprite = this.add.image(0, 0, texture).setScale(CAR_SCALE).setTint(tint);
+      const sprite = this.add.image(0, 0, fuel.texture).setScale(CAR_SCALE).setTint(fuel.color);
       const label = this.add
-        .text(0, -46, driver.name, {
+        .text(0, -46, spec.kind === 'player' ? 'YOU' : spec.name, {
           fontFamily: '"Segoe UI", Arial, sans-serif',
           fontSize: '13px',
-          color: isPlayer ? '#ffffff' : '#a9c1e8',
+          color: spec.kind === 'player' ? '#ffffff' : spec.kind === 'remote' ? '#ffe9a8' : '#a9c1e8',
           stroke: '#000000',
           strokeThickness: 3,
         })
@@ -179,14 +233,20 @@ export class RaceScene extends Phaser.Scene {
         view: { container, sprite, label, flames },
         finished: false,
         finishTime: 0,
+        netId: spec.netId,
       };
-      if (isPlayer) {
+      if (spec.kind === 'player') {
         this.player = entry;
         playerDriver.car = car;
-      } else {
+      } else if (spec.kind === 'bot') {
         (driver as RaceBotDriver).car = car;
       }
       this.racers.push(entry);
+    }
+
+    // Live multiplayer: receive rival positions.
+    if (this.net) {
+      this.net.room.onState = (msg) => this.remoteTargets.set(msg.id, msg);
     }
 
     // Camera.
@@ -216,14 +276,17 @@ export class RaceScene extends Phaser.Scene {
     }
 
     this.scene.launch('racehud', { track: this.track, path: this.path });
-    sfx.startEngine();
+    sfx.startEngine(this.save.selectedFuel);
     music.start();
     this.input.once('pointerdown', () => music.start());
 
     this.runCountdown();
 
     this.input.keyboard!.on('keydown-ESC', () => this.quitRace());
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => sfx.stopEngine());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      sfx.stopEngine();
+      if (this.net) this.net.room.onState = undefined;
+    });
   }
 
   // ---------- Track rendering ----------
@@ -235,14 +298,21 @@ export class RaceScene extends Phaser.Scene {
     const w = this.track.roadWidth;
     const day = this.track.daylight;
 
-    // Daylight: bright asphalt with curb edging, original city style.
-    // Night: neon edge glow synthwave circuit.
+    // Daylight city: bright asphalt with gold curbs. Daylight forest:
+    // packed-dirt rally road with earth shoulders. Night: neon circuit.
+    const forest = this.track.envId === 'forest';
     const passes: [number, number, number][] = day
-      ? [
-          [w + 22, 0x55555d, 1], // curb/shadow edge
-          [w + 10, 0xb9902c, 0.65], // gold curb line
-          [w, 0x6e6e76, 1], // asphalt
-        ]
+      ? forest
+        ? [
+            [w + 24, 0x3e4a2c, 1], // grass-shadow shoulder
+            [w + 10, 0x8a6a3c, 0.8], // earth berm
+            [w, 0x74603e, 1], // packed dirt
+          ]
+        : [
+            [w + 22, 0x55555d, 1], // curb/shadow edge
+            [w + 10, 0xb9902c, 0.65], // gold curb line
+            [w, 0x6e6e76, 1], // asphalt
+          ]
       : [
           [w + 18, pal.wall, 0.18],
           [w + 6, 0x05050d, 1],
@@ -256,8 +326,8 @@ export class RaceScene extends Phaser.Scene {
       g.closePath();
       g.strokePath();
     }
-    // Center line dashes — white in daylight, dim violet at night.
-    g.lineStyle(day ? 5 : 4, day ? 0xe8e8ec : 0x3a3a5c, 0.9);
+    // Center line dashes — white on asphalt, tire ruts on dirt, violet at night.
+    g.lineStyle(day ? 5 : 4, day ? (forest ? 0x5c4a30 : 0xe8e8ec) : 0x3a3a5c, 0.9);
     for (let i = 0; i < pts.length; i += 6) {
       const a = pts[i];
       const b = pts[(i + 3) % pts.length];
@@ -297,6 +367,10 @@ export class RaceScene extends Phaser.Scene {
    */
   private drawScenery(): void {
     if (!this.track.daylight) return;
+    if (this.track.envId === 'forest') {
+      this.drawForestScenery();
+      return;
+    }
     const size = this.track.size;
     const roadHalf = this.track.roadWidth / 2;
     const pts = this.path.pts;
@@ -331,17 +405,17 @@ export class RaceScene extends Phaser.Scene {
     let buildings = 0;
 
     for (let tries = 0; tries < 700 && buildings < 48; tries++) {
-      const bw = 170 + Math.random() * 220;
-      const bh = 170 + Math.random() * 220;
-      const x = 120 + Math.random() * (size - 240 - bw);
-      const y = 120 + Math.random() * (size - 240 - bh);
+      const bw = 170 + this.rand() * 220;
+      const bh = 170 + this.rand() * 220;
+      const x = 120 + this.rand() * (size - 240 - bw);
+      const y = 120 + this.rand() * (size - 240 - bh);
       const cx = x + bw / 2;
       const cy = y + bh / 2;
       const halfDiag = Math.hypot(bw, bh) / 2;
 
       const roadDist = minDistToRoad(cx, cy);
       if (roadDist < roadHalf + halfDiag * 0.82 + 26) continue;
-      if (roadDist > 1400 && Math.random() < 0.6) continue; // keep density near the track
+      if (roadDist > 1400 && this.rand() < 0.6) continue; // keep density near the track
       if (placed.some((p) => Math.hypot(p.x - cx, p.y - cy) < (p.r + halfDiag) * 0.85)) continue;
       placed.push({ x: cx, y: cy, r: halfDiag });
       this.buildings.push({ x, y, w: bw, h: bh });
@@ -362,16 +436,16 @@ export class RaceScene extends Phaser.Scene {
       g.fillStyle(0x84848c, 1).fillRect(x + 15, y + 15, bw - 30, bh - 30);
       g.fillStyle(0x74747e, 0.6);
       for (let s = 0; s < 14; s++) {
-        g.fillRect(x + 20 + Math.random() * (bw - 50), y + 20 + Math.random() * (bh - 50), 8, 8);
+        g.fillRect(x + 20 + this.rand() * (bw - 50), y + 20 + this.rand() * (bh - 50), 8, 8);
       }
 
       // Roof vents.
-      const vents = 1 + Math.floor(Math.random() * 3);
+      const vents = 1 + Math.floor(this.rand() * 3);
       for (let v = 0; v < vents; v++) {
         this.add
-          .image(x + 35 + Math.random() * (bw - 70), y + 35 + Math.random() * (bh - 70), 'vent')
+          .image(x + 35 + this.rand() * (bw - 70), y + 35 + this.rand() * (bh - 70), 'vent')
           .setDepth(0.6)
-          .setRotation(Math.random() < 0.5 ? 0 : Math.PI / 2);
+          .setRotation(this.rand() < 0.5 ? 0 : Math.PI / 2);
       }
 
       // Road-facing buildings get a striped shop awning on the near edge.
@@ -388,21 +462,75 @@ export class RaceScene extends Phaser.Scene {
 
     // Crates and vents on the sidewalk just off the road edge.
     for (let i = 0; i < 34; i++) {
-      const idx = Math.floor(Math.random() * pts.length);
+      const idx = Math.floor(this.rand() * pts.length);
       const p = pts[idx];
       const q = pts[(idx + 1) % pts.length];
       const tangent = Math.atan2(q.y - p.y, q.x - p.x);
-      const side = Math.random() < 0.5 ? 1 : -1;
-      const lateral = roadHalf + 40 + Math.random() * 70;
+      const side = this.rand() < 0.5 ? 1 : -1;
+      const lateral = roadHalf + 40 + this.rand() * 70;
       const ox = p.x + Math.cos(tangent + Math.PI / 2) * lateral * side;
       const oy = p.y + Math.sin(tangent + Math.PI / 2) * lateral * side;
       if (ox < 60 || oy < 60 || ox > size - 60 || oy > size - 60) continue;
-      const scale = 0.9 + Math.random() * 0.5;
+      const scale = 0.9 + this.rand() * 0.5;
       this.add
-        .image(ox, oy, Math.random() < 0.7 ? 'crate' : 'vent')
+        .image(ox, oy, this.rand() < 0.7 ? 'crate' : 'vent')
         .setDepth(0.7)
-        .setRotation(Math.random() * 0.5 - 0.25)
+        .setRotation(this.rand() * 0.5 - 0.25)
         .setScale(scale);
+      this.props.push({ x: ox, y: oy, r: 15 * scale });
+    }
+  }
+
+  /** Forest Rally trackside: dense tree canopies (solid) + logs. */
+  private drawForestScenery(): void {
+    const size = this.track.size;
+    const roadHalf = this.track.roadWidth / 2;
+    const pts = this.path.pts;
+    const minDistToRoad = (x: number, y: number): number => {
+      let best = Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const dx = pts[i].x - x;
+        const dy = pts[i].y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) best = d2;
+      }
+      return Math.sqrt(best);
+    };
+
+    const g = this.add.graphics().setDepth(0.5);
+    const placed: { x: number; y: number; r: number }[] = [];
+    let trees = 0;
+    for (let tries = 0; tries < 1200 && trees < 150; tries++) {
+      const r = 26 + this.rand() * 36;
+      const x = 80 + this.rand() * (size - 160);
+      const y = 80 + this.rand() * (size - 160);
+      const roadDist = minDistToRoad(x, y);
+      if (roadDist < roadHalf + r + 24) continue;
+      if (roadDist > 950 && this.rand() < 0.55) continue; // denser near the road
+      if (placed.some((p) => Math.hypot(p.x - x, p.y - y) < (p.r + r) * 0.9)) continue;
+      placed.push({ x, y, r });
+      trees++;
+
+      g.fillStyle(0x243c1c, 0.4).fillCircle(x + 8, y + 8, r); // shadow
+      g.fillStyle(0x2e5c30, 1).fillCircle(x, y, r);
+      g.fillStyle(0x3f7a40, 1).fillCircle(x - r * 0.22, y - r * 0.22, r * 0.64);
+      g.fillStyle(0x54985a, 0.85).fillCircle(x - r * 0.34, y - r * 0.34, r * 0.32);
+      this.props.push({ x, y, r: r * 0.8 });
+    }
+
+    // Fallen logs / crates near the road edge.
+    for (let i = 0; i < 16; i++) {
+      const idx = Math.floor(this.rand() * pts.length);
+      const p = pts[idx];
+      const q = pts[(idx + 1) % pts.length];
+      const tangent = Math.atan2(q.y - p.y, q.x - p.x);
+      const side = this.rand() < 0.5 ? 1 : -1;
+      const lateral = roadHalf + 34 + this.rand() * 60;
+      const ox = p.x + Math.cos(tangent + Math.PI / 2) * lateral * side;
+      const oy = p.y + Math.sin(tangent + Math.PI / 2) * lateral * side;
+      if (ox < 60 || oy < 60 || ox > size - 60 || oy > size - 60) continue;
+      const scale = 0.9 + this.rand() * 0.4;
+      this.add.image(ox, oy, 'crate').setDepth(0.7).setRotation(this.rand() * Math.PI).setScale(scale);
       this.props.push({ x: ox, y: oy, r: 15 * scale });
     }
   }
@@ -456,11 +584,11 @@ export class RaceScene extends Phaser.Scene {
 
   private pointOnTrack(minGapFromStart = 25): { x: number; y: number; idx: number } {
     const n = this.path.pts.length;
-    const idx = (minGapFromStart + Math.floor(Math.random() * (n - minGapFromStart * 2))) % n;
+    const idx = (minGapFromStart + Math.floor(this.rand() * (n - minGapFromStart * 2))) % n;
     const p = this.path.pts[idx];
     const q = this.path.pts[(idx + 1) % n];
     const tangent = Math.atan2(q.y - p.y, q.x - p.x);
-    const lateral = (Math.random() - 0.5) * (this.track.roadWidth - 60);
+    const lateral = (this.rand() - 0.5) * (this.track.roadWidth - 60);
     return {
       x: p.x + Math.cos(tangent + Math.PI / 2) * lateral,
       y: p.y + Math.sin(tangent + Math.PI / 2) * lateral,
@@ -600,6 +728,12 @@ export class RaceScene extends Phaser.Scene {
       const car = entry.car;
       if (!car.alive) continue;
 
+      // Remote players: follow the network, skip local physics entirely.
+      if (entry.netId) {
+        this.updateRemote(entry, dt, racing);
+        continue;
+      }
+
       // Rubber-band bots toward the player's progress.
       if (entry.driver instanceof RaceBotDriver && this.player) {
         const gap = (this.player.tracker.progress - entry.tracker.progress) / this.path.total;
@@ -706,10 +840,14 @@ export class RaceScene extends Phaser.Scene {
       if (!pickup.active && time >= pickup.respawnAt) this.spawnPickup(pickup.kind, pickup);
     }
 
-    // Car-vs-car bumps.
+    // Car-vs-car bumps. Remote cars are immovable here — their true
+    // position lives on their owner's device; only the local car yields.
     for (let i = 0; i < this.racers.length; i++) {
+      const aRemote = !!this.racers[i].netId;
       const a = this.racers[i].car;
       for (let j = i + 1; j < this.racers.length; j++) {
+        const bRemote = !!this.racers[j].netId;
+        if (aRemote && bRemote) continue;
         const b = this.racers[j].car;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
@@ -720,12 +858,22 @@ export class RaceScene extends Phaser.Scene {
           const push = (minD - d) / 2;
           const nx = dx / d;
           const ny = dy / d;
-          a.x -= nx * push;
-          a.y -= ny * push;
-          b.x += nx * push;
-          b.y += ny * push;
-          a.speed *= 0.94;
-          b.speed *= 0.94;
+          if (aRemote) {
+            b.x += nx * push * 2;
+            b.y += ny * push * 2;
+            b.speed *= 0.94;
+          } else if (bRemote) {
+            a.x -= nx * push * 2;
+            a.y -= ny * push * 2;
+            a.speed *= 0.94;
+          } else {
+            a.x -= nx * push;
+            a.y -= ny * push;
+            b.x += nx * push;
+            b.y += ny * push;
+            a.speed *= 0.94;
+            b.speed *= 0.94;
+          }
         }
       }
     }
@@ -741,6 +889,23 @@ export class RaceScene extends Phaser.Scene {
     const pc = this.player.car;
     sfx.setEngine(Phaser.Math.Clamp(Math.abs(pc.speed) / pc.stats.topSpeed, 0, 1), pc.boosting || pc.overdriveTimer > 0);
 
+    // Live multiplayer: share our position ~15×/s (also after finishing,
+    // so rivals receive the final time).
+    if (this.net && this.phase !== 'countdown' && time - this.lastNetSend > 66) {
+      this.lastNetSend = time;
+      this.net.room.sendState({
+        t: 'state',
+        id: this.net.room.myId,
+        x: Math.round(pc.x),
+        y: Math.round(pc.y),
+        h: pc.heading,
+        lap: this.player.tracker.lap,
+        prog: Math.round(this.player.tracker.progress),
+        boost: pc.boosting || pc.overdriveTimer > 0,
+        fin: this.player.finished ? Math.round(this.player.finishTime - this.raceStart) : 0,
+      });
+    }
+
     // Ghost racing: record our run, replay the challenger's.
     if (racing) {
       this.recorder.record(this.raceTimeMs, pc.x, pc.y, pc.heading);
@@ -750,6 +915,27 @@ export class RaceScene extends Phaser.Scene {
       this.ghostSprite.setPosition(g.x, g.y);
       (this.ghostSprite.list[0] as Phaser.GameObjects.Image).setRotation(g.heading);
     }
+  }
+
+  /** Smoothly track a network rival toward its latest reported state. */
+  private updateRemote(entry: RacerEntry, dt: number, racing: boolean): void {
+    const msg = this.remoteTargets.get(entry.netId!);
+    const car = entry.car;
+    if (msg) {
+      const k = Math.min(1, dt * 10);
+      car.x += (msg.x - car.x) * k;
+      car.y += (msg.y - car.y) * k;
+      let dh = msg.h - car.heading;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      car.heading += dh * k;
+      car.boosting = msg.boost;
+      if (msg.fin > 0 && !entry.finished) {
+        entry.finished = true;
+        entry.finishTime = this.raceStart + msg.fin;
+      }
+    }
+    if (racing && !entry.finished) entry.tracker.update(car.x, car.y);
   }
 
   get raceTimeMs(): number {

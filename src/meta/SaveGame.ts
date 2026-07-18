@@ -15,6 +15,8 @@ export interface MissionState {
 
 export interface SaveData {
   version: number;
+  /** Display name in multiplayer lobbies and ghost challenges. */
+  playerName: string;
   xp: number;
   scrap: number;
   trophies: number;
@@ -53,6 +55,7 @@ export interface SaveData {
 export function defaultSave(): SaveData {
   return {
     version: SAVE_VERSION,
+    playerName: '',
     xp: 0,
     scrap: 0,
     trophies: 0,

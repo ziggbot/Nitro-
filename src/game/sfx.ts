@@ -114,28 +114,74 @@ class Sfx {
     notes.forEach((f, i) => setTimeout(() => this.tone(f, f * 1.02, 0.12, 'sawtooth', 0.22), i * 55));
   }
 
-  // --- Continuous engine hum, pitch/volume follow the player's speed. ---
+  // --- Continuous engine sound, styled per fuel type. ---
   private engineOsc: OscillatorNode | null = null;
   private engineSub: OscillatorNode | null = null;
+  private engineNoise: AudioBufferSourceNode | null = null;
+  private engineNoiseFilter: BiquadFilterNode | null = null;
   private engineGain: GainNode | null = null;
+  private engineType: 'petrol' | 'gas' | 'electric' = 'petrol';
 
-  startEngine(): void {
+  /**
+   * petrol: growling V8 (sawtooth + sub through a dark lowpass)
+   * gas: rocket jet (high saw + looping hiss through a rising bandpass)
+   * electric: clean rising EV whine (sine + detuned triangle, beating)
+   */
+  startEngine(fuelId: string = 'petrol'): void {
     const ctx = this.ensure();
     if (!ctx || !this.master || this.engineOsc) return;
-    this.engineOsc = ctx.createOscillator();
-    this.engineOsc.type = 'sawtooth';
-    this.engineOsc.frequency.value = 55;
-    this.engineSub = ctx.createOscillator();
-    this.engineSub.type = 'sine';
-    this.engineSub.frequency.value = 27.5;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 420;
+    this.engineType = fuelId === 'gas' || fuelId === 'electric' ? fuelId : 'petrol';
+    const type = this.engineType;
+
     this.engineGain = ctx.createGain();
     this.engineGain.gain.value = 0;
+    this.engineGain.connect(this.master);
+
+    this.engineOsc = ctx.createOscillator();
+    this.engineSub = ctx.createOscillator();
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+
+    if (type === 'petrol') {
+      this.engineOsc.type = 'sawtooth';
+      this.engineOsc.frequency.value = 55;
+      this.engineSub.type = 'sine';
+      this.engineSub.frequency.value = 27.5;
+      lp.frequency.value = 420;
+    } else if (type === 'gas') {
+      this.engineOsc.type = 'sawtooth';
+      this.engineOsc.frequency.value = 85;
+      this.engineSub.type = 'sine';
+      this.engineSub.frequency.value = 42;
+      lp.frequency.value = 700;
+      // Jet hiss: looping noise through a bandpass that opens with speed.
+      const frames = Math.floor(ctx.sampleRate * 1.2);
+      const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+      this.engineNoise = ctx.createBufferSource();
+      this.engineNoise.buffer = buf;
+      this.engineNoise.loop = true;
+      this.engineNoiseFilter = ctx.createBiquadFilter();
+      this.engineNoiseFilter.type = 'bandpass';
+      this.engineNoiseFilter.frequency.value = 900;
+      this.engineNoiseFilter.Q.value = 0.9;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.55;
+      this.engineNoise.connect(this.engineNoiseFilter).connect(noiseGain).connect(this.engineGain);
+      this.engineNoise.start();
+    } else {
+      // electric
+      this.engineOsc.type = 'sine';
+      this.engineOsc.frequency.value = 150;
+      this.engineSub.type = 'triangle';
+      this.engineSub.frequency.value = 303; // slight detune → EV "beating" whine
+      lp.frequency.value = 2600;
+    }
+
     this.engineOsc.connect(lp);
     this.engineSub.connect(lp);
-    lp.connect(this.engineGain).connect(this.master);
+    lp.connect(this.engineGain);
     this.engineOsc.start();
     this.engineSub.start();
   }
@@ -144,11 +190,25 @@ class Sfx {
   setEngine(speedFrac: number, surge: boolean): void {
     if (!this.engineOsc || !this.engineSub || !this.engineGain || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const wobble = Math.sin(now * 31) * 2.2;
-    const freq = 48 + speedFrac * 105 + (surge ? 22 : 0) + wobble;
+    const type = this.engineType;
+    let freq: number;
+    let vol: number;
+    if (type === 'petrol') {
+      const wobble = Math.sin(now * 31) * 2.2;
+      freq = 48 + speedFrac * 105 + (surge ? 22 : 0) + wobble;
+      this.engineSub.frequency.setTargetAtTime(freq / 2, now, 0.06);
+      vol = 0.02 + speedFrac * 0.045 + (surge ? 0.025 : 0);
+    } else if (type === 'gas') {
+      freq = 75 + speedFrac * 180 + (surge ? 45 : 0);
+      this.engineSub.frequency.setTargetAtTime(freq / 2, now, 0.06);
+      this.engineNoiseFilter?.frequency.setTargetAtTime(600 + speedFrac * 2600 + (surge ? 900 : 0), now, 0.1);
+      vol = 0.016 + speedFrac * 0.05 + (surge ? 0.035 : 0);
+    } else {
+      freq = 140 + speedFrac * 460 + (surge ? 90 : 0);
+      this.engineSub.frequency.setTargetAtTime(freq * 2.02, now, 0.05);
+      vol = 0.012 + speedFrac * 0.034 + (surge ? 0.018 : 0);
+    }
     this.engineOsc.frequency.setTargetAtTime(freq, now, 0.06);
-    this.engineSub.frequency.setTargetAtTime(freq / 2, now, 0.06);
-    const vol = 0.02 + speedFrac * 0.045 + (surge ? 0.025 : 0);
     this.engineGain.gain.setTargetAtTime(this.enabled ? vol : 0, now, 0.08);
   }
 
@@ -156,15 +216,16 @@ class Sfx {
     if (this.engineGain && this.ctx) {
       this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
     }
-    const osc = this.engineOsc;
-    const sub = this.engineSub;
-    if (this.ctx && osc && sub) {
+    if (this.ctx) {
       const stopAt = this.ctx.currentTime + 0.3;
-      osc.stop(stopAt);
-      sub.stop(stopAt);
+      this.engineOsc?.stop(stopAt);
+      this.engineSub?.stop(stopAt);
+      this.engineNoise?.stop(stopAt);
     }
     this.engineOsc = null;
     this.engineSub = null;
+    this.engineNoise = null;
+    this.engineNoiseFilter = null;
     this.engineGain = null;
   }
 
