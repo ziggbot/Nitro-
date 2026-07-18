@@ -127,7 +127,8 @@ export class RaceScene extends Phaser.Scene {
       } else {
         const botClass = CAR_CLASSES[Math.floor(Math.random() * CAR_CLASSES.length)];
         driver = new RaceBotDriver(names[slot - 1], this.path, startIdx);
-        const variance = 0.93 + Math.random() * 0.1;
+        // Some rivals are genuinely faster than a stock player car.
+        const variance = 0.98 + Math.random() * 0.1;
         stats = { ...botClass.base, topSpeed: botClass.base.topSpeed * variance };
         tint = PAINTS[Math.floor(Math.random() * PAINTS.length)].tint;
         texture = botClass.texture;
@@ -184,7 +185,7 @@ export class RaceScene extends Phaser.Scene {
 
     this.runCountdown();
 
-    this.input.keyboard!.on('keydown-ESC', () => this.finishRace(true));
+    this.input.keyboard!.on('keydown-ESC', () => this.quitRace());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => sfx.stopEngine());
   }
 
@@ -452,6 +453,11 @@ export class RaceScene extends Phaser.Scene {
       }
     };
     this.time.delayedCall(600, tick);
+  }
+
+  /** Abandon the race (ESC / HUD exit button); counts as DNF. */
+  quitRace(): void {
+    this.finishRace(true);
   }
 
   private finishRace(quit = false): void {

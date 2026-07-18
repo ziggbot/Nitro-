@@ -93,6 +93,23 @@ export function makeButton(
   };
 }
 
+/** Small ✕ button for in-game HUDs: quit the run and return via results. */
+export function makeExitButton(scene: Phaser.Scene, x: number, y: number, onClick: () => void): void {
+  const bg = scene.add
+    .rectangle(x, y, 32, 32, PALETTE.uiPanel, 0.7)
+    .setStrokeStyle(2, PALETTE.red, 0.85)
+    .setDepth(60);
+  scene.add
+    .text(x, y, '✕', { fontFamily: FONTS.body, fontSize: '17px', color: hexToCss(PALETTE.red) })
+    .setOrigin(0.5)
+    .setDepth(61);
+  bg.setInteractive({ useHandCursor: true }).on('pointerup', (pointer: Phaser.Input.Pointer) => {
+    if (pointer.getDistance() > 16) return;
+    sfx.click();
+    onClick();
+  });
+}
+
 export function formatMs(ms: number): string {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);

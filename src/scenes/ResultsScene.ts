@@ -209,16 +209,17 @@ export class ResultsScene extends Phaser.Scene {
       if (this.race) this.scene.start('race', { trackId: this.race.trackId });
       else this.scene.start('arena', { arenaId: this.arenaId });
     };
+    const againLabel = this.race ? '↻ RACE AGAIN' : '↻ PLAY AGAIN';
     let DH: number;
     if (narrow) {
-      makeButton(this, cx, 512, 340, 56, '↻ RACE AGAIN', again, PALETTE.lime);
-      makeButton(this, cx, 574, 340, 44, '🔧 GARAGE', () => this.scene.start('garage'));
-      makeButton(this, cx, 628, 340, 40, 'MENU', () => this.scene.start('menu'));
+      makeButton(this, cx, 512, 340, 56, againLabel, again, PALETTE.lime);
+      makeButton(this, cx, 574, 340, 48, '🏠 MAIN MENU', () => this.scene.start('menu'), PALETTE.cyan);
+      makeButton(this, cx, 630, 340, 40, '🔧 GARAGE', () => this.scene.start('garage'), PALETTE.uiDim);
       DH = 680;
     } else {
-      makeButton(this, cx - 190, 512, 220, 54, '↻ RACE AGAIN', again, PALETTE.lime);
-      makeButton(this, cx + 10, 512, 160, 54, '🔧 GARAGE', () => this.scene.start('garage'));
-      makeButton(this, cx + 185, 512, 160, 54, 'MENU', () => this.scene.start('menu'));
+      makeButton(this, cx - 190, 512, 220, 54, againLabel, again, PALETTE.lime);
+      makeButton(this, cx + 15, 512, 170, 54, '🏠 MAIN MENU', () => this.scene.start('menu'), PALETTE.cyan);
+      makeButton(this, cx + 195, 512, 160, 54, '🔧 GARAGE', () => this.scene.start('garage'), PALETTE.uiDim);
       DH = 560;
     }
 

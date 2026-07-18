@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { ArenaDef } from '../config/arenas';
 import { PALETTE, hexToCss } from '../config/palette';
 import { MIN_TRAIL } from '../game/CarSim';
-import { bodyStyle, makePanel } from '../ui/widgets';
+import { bodyStyle, makeExitButton, makePanel } from '../ui/widgets';
 import { music } from '../game/music';
 import { TouchControlsOverlay } from '../ui/TouchControlsOverlay';
 import type { ArenaScene } from './ArenaScene';
@@ -61,6 +61,9 @@ export class HudScene extends Phaser.Scene {
     this.trailBar = this.add.rectangle(22, 61, 8, 5, PALETTE.amber).setOrigin(0, 0.5);
 
     this.scoreLine = this.add.text(20, 74, '', bodyStyle(13, hexToCss(PALETTE.cyan)));
+
+    // Quit to results/menu (banks the run) — vital on touch where ESC doesn't exist.
+    makeExitButton(this, 244, 26, () => this.arenaScene.quitRun());
 
     // --- Top-right: compact round leaderboard. ---
     const boardW = narrow ? 132 : 160;

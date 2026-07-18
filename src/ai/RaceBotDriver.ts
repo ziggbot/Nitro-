@@ -33,7 +33,7 @@ export class RaceBotDriver implements Driver {
     startIdx: number,
   ) {
     this.pathIdx = startIdx;
-    this.skill = 0.85 + Math.random() * 0.2;
+    this.skill = 0.93 + Math.random() * 0.15;
     this.lane = (Math.random() - 0.5) * 70;
   }
 
@@ -60,11 +60,12 @@ export class RaceBotDriver implements Driver {
 
     // Brake for corners: how much does the track bend between probes?
     const bend = Math.abs(angleDiff(Math.atan2(nearPt.y - car.y, nearPt.x - car.x), tangentA));
-    let throttle = bend > 1.1 ? 0.45 : bend > 0.55 ? 0.7 : 1;
-    throttle = Math.min(1, throttle * this.skill + this.rubberBand * 0.12);
+    let throttle = bend > 1.1 ? 0.58 : bend > 0.55 ? 0.85 : 1;
+    // Rubber-band can push slightly past 1 so trailing bots claw back.
+    throttle = Math.min(1.06, throttle * this.skill + this.rubberBand * 0.18);
 
-    // Nitro on straights when fuel allows.
-    const boost = bend < 0.25 && car.fuel > car.stats.tank * 0.45 && this.rubberBand > -0.5;
+    // Nitro on straights when fuel allows — hungrier when behind.
+    const boost = bend < 0.32 && car.fuel > car.stats.tank * 0.35 && this.rubberBand > -0.25;
 
     return { steer, throttle, boost };
   }

@@ -3,7 +3,7 @@ import type { TrackDef } from '../config/tracks';
 import { PALETTE, hexToCss } from '../config/palette';
 import { music } from '../game/music';
 import type { RacePath } from '../game/racePath';
-import { bodyStyle, formatMs, makePanel, FONTS } from '../ui/widgets';
+import { bodyStyle, formatMs, makeExitButton, makePanel, FONTS } from '../ui/widgets';
 import { TouchControlsOverlay } from '../ui/TouchControlsOverlay';
 import type { RaceScene } from './RaceScene';
 
@@ -42,6 +42,9 @@ export class RaceHudScene extends Phaser.Scene {
     this.add.text(18, 14, '⛽ FUEL', bodyStyle(10, hexToCss(PALETTE.uiDim)));
     this.add.rectangle(110, 36, 180, 12, 0x0a1020, 0.7).setStrokeStyle(1, PALETTE.uiPanelStroke);
     this.fuelBar = this.add.rectangle(21, 36, 176, 8, PALETTE.lime).setOrigin(0, 0.5);
+
+    // Quit the race (DNF) — reachable on touch devices.
+    makeExitButton(this, 232, 26, () => this.raceScene.quitRace());
 
     // Top-center: position + lap, big retro numbers.
     this.posText = this.add

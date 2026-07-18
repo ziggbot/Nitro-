@@ -209,9 +209,7 @@ export class ArenaScene extends Phaser.Scene {
     music.start();
     this.input.once('pointerdown', () => music.start());
 
-    this.input.keyboard!.on('keydown-ESC', () => {
-      if (!this.playerDead) this.wreck(this.player, 'fuel');
-    });
+    this.input.keyboard!.on('keydown-ESC', () => this.quitRun());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off('resize', this.applyZoom, this);
       sfx.stopEngine();
@@ -236,6 +234,11 @@ export class ArenaScene extends Phaser.Scene {
     const h = Math.ceil(this.scale.height / zoom);
     this.darkness.resize(w, h);
     this.darkness.setPosition((this.scale.width - w) / 2, (this.scale.height - h) / 2);
+  }
+
+  /** End the run early (ESC / HUD exit button); rewards still bank. */
+  quitRun(): void {
+    if (!this.playerDead) this.wreck(this.player, 'fuel');
   }
 
   // ---------- Spawning ----------
