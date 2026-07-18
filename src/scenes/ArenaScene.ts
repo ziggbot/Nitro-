@@ -18,6 +18,42 @@ interface CarView {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
+  flames: Phaser.GameObjects.Particles.ParticleEmitter;
+}
+
+/** Exhaust-flame emitter that fires backwards out of the car's tailpipes. */
+export function makeExhaustFlames(
+  scene: Phaser.Scene,
+  car: CarSim,
+): Phaser.GameObjects.Particles.ParticleEmitter {
+  const FLAME_TINTS = [0xfff6c0, 0xffd020, 0xff8a1f, 0xff3b18];
+  const flames = scene.add.particles(0, 0, 'dot', {
+    speed: { min: 80, max: 190 },
+    angle: { onEmit: () => Phaser.Math.RadToDeg(car.heading + Math.PI) + (Math.random() * 30 - 15) },
+    x: { min: -6, max: 6 },
+    y: { min: -6, max: 6 },
+    scale: { start: 1.7, end: 0 },
+    alpha: { start: 0.95, end: 0 },
+    lifespan: { min: 150, max: 330 },
+    frequency: 16,
+    quantity: 2,
+    tint: { onEmit: () => FLAME_TINTS[Math.floor(Math.random() * FLAME_TINTS.length)] },
+    blendMode: Phaser.BlendModes.ADD,
+    emitting: false,
+  });
+  flames.setDepth(9);
+  return flames;
+}
+
+/** Position the flames at the rear bumper; emit only while boosting. */
+export function updateExhaustFlames(
+  flames: Phaser.GameObjects.Particles.ParticleEmitter,
+  car: CarSim,
+  rearOffset: number,
+): void {
+  const hot = car.alive && (car.boosting || car.overdriveTimer > 0);
+  flames.setPosition(car.x - Math.cos(car.heading) * rearOffset, car.y - Math.sin(car.heading) * rearOffset);
+  flames.emitting = hot;
 }
 
 interface ScrapOrb {
@@ -234,9 +270,10 @@ export class ArenaScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     const container = this.add.container(pos.x, pos.y, [sprite, label]).setDepth(10);
+    const flames = makeExhaustFlames(this, car);
 
     this.cars.push(car);
-    this.views.set(car.id, { container, sprite, label });
+    this.views.set(car.id, { container, sprite, label, flames });
     this.drivers.set(car.id, driver);
     return car;
   }
@@ -633,8 +670,9 @@ export class ArenaScene extends Phaser.Scene {
 
   private updateViews(): void {
     for (const car of this.cars) {
-      if (!car.alive) continue;
       const view = this.views.get(car.id)!;
+      updateExhaustFlames(view.flames, car, 44 * CAR_SCALE);
+      if (!car.alive) continue;
       view.container.setPosition(car.x, car.y);
       view.sprite.setRotation(car.heading);
       // Overdrive/boost makes the car visibly swell a touch.

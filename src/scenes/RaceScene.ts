@@ -13,11 +13,13 @@ import { sfx } from '../game/sfx';
 import { music } from '../game/music';
 import { loadSave, type SaveData } from '../meta/SaveGame';
 import { raceRewards } from '../meta/Progression';
+import { makeExhaustFlames, updateExhaustFlames } from './ArenaScene';
 
 interface RacerView {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
+  flames: Phaser.GameObjects.Particles.ParticleEmitter;
 }
 
 interface RacerEntry {
@@ -141,12 +143,13 @@ export class RaceScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
       const container = this.add.container(gx, gy, [sprite, label]).setDepth(10);
+      const flames = makeExhaustFlames(this, car);
 
       const entry: RacerEntry = {
         car,
         driver,
         tracker: new LapTracker(this.path, startIdx),
-        view: { container, sprite, label },
+        view: { container, sprite, label, flames },
         finished: false,
         finishTime: 0,
       };
@@ -504,6 +507,7 @@ export class RaceScene extends Phaser.Scene {
       entry.view.container.setPosition(car.x, car.y);
       entry.view.sprite.setRotation(car.heading);
       entry.view.sprite.setScale(CAR_SCALE * (car.boosting || car.overdriveTimer > 0 ? 1.08 : 1));
+      updateExhaustFlames(entry.view.flames, car, 44 * CAR_SCALE);
     }
     const pc = this.player.car;
     sfx.setEngine(Phaser.Math.Clamp(Math.abs(pc.speed) / pc.stats.topSpeed, 0, 1), pc.boosting || pc.overdriveTimer > 0);
