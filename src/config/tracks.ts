@@ -76,6 +76,34 @@ export const TRACKS: TrackDef[] = [
       { x: 600, y: 1300 },
     ],
   },
+  {
+    id: 'desert-gp',
+    name: 'Desert Dunes GP',
+    envId: 'desert',
+    size: 4400,
+    laps: 3,
+    botCount: 5,
+    daylight: true,
+    roadWidth: 165,
+    rewardMult: 1.5,
+    fuelPickups: 8,
+    barrels: 3,
+    hazards: { oil: 3, cones: 5, potholes: 12 },
+    // Wide sweeping dune curves with one tight canyon section.
+    controlPoints: [
+      { x: 750, y: 850 },
+      { x: 1900, y: 520 },
+      { x: 3100, y: 780 },
+      { x: 3900, y: 1350 },
+      { x: 3550, y: 2250 },
+      { x: 3850, y: 3150 },
+      { x: 2950, y: 3700 },
+      { x: 1850, y: 3350 },
+      { x: 1000, y: 3700 },
+      { x: 520, y: 2850 },
+      { x: 850, y: 1950 },
+    ],
+  },
 ];
 
 export function trackById(id: string): TrackDef {

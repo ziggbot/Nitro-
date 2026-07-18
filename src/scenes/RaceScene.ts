@@ -298,9 +298,10 @@ export class RaceScene extends Phaser.Scene {
     const w = this.track.roadWidth;
     const day = this.track.daylight;
 
-    // Daylight city: bright asphalt with gold curbs. Daylight forest:
-    // packed-dirt rally road with earth shoulders. Night: neon circuit.
+    // Daylight looks per environment: city asphalt with gold curbs,
+    // forest packed dirt, desert hard-baked sand road. Night: neon.
     const forest = this.track.envId === 'forest';
+    const desert = this.track.envId === 'desert';
     const passes: [number, number, number][] = day
       ? forest
         ? [
@@ -308,11 +309,17 @@ export class RaceScene extends Phaser.Scene {
             [w + 10, 0x8a6a3c, 0.8], // earth berm
             [w, 0x74603e, 1], // packed dirt
           ]
-        : [
-            [w + 22, 0x55555d, 1], // curb/shadow edge
-            [w + 10, 0xb9902c, 0.65], // gold curb line
-            [w, 0x6e6e76, 1], // asphalt
-          ]
+        : desert
+          ? [
+              [w + 24, 0x6e5a38, 1], // shadowed dune shoulder
+              [w + 10, 0xa8905c, 0.85], // sand berm
+              [w, 0x8f7648, 1], // hard-baked sand road
+            ]
+          : [
+              [w + 22, 0x55555d, 1], // curb/shadow edge
+              [w + 10, 0xb9902c, 0.65], // gold curb line
+              [w, 0x6e6e76, 1], // asphalt
+            ]
       : [
           [w + 18, pal.wall, 0.18],
           [w + 6, 0x05050d, 1],
@@ -326,8 +333,8 @@ export class RaceScene extends Phaser.Scene {
       g.closePath();
       g.strokePath();
     }
-    // Center line dashes — white on asphalt, tire ruts on dirt, violet at night.
-    g.lineStyle(day ? 5 : 4, day ? (forest ? 0x5c4a30 : 0xe8e8ec) : 0x3a3a5c, 0.9);
+    // Center line dashes — white on asphalt, ruts on dirt/sand, violet at night.
+    g.lineStyle(day ? 5 : 4, day ? (forest ? 0x5c4a30 : desert ? 0xdcc89a : 0xe8e8ec) : 0x3a3a5c, 0.9);
     for (let i = 0; i < pts.length; i += 6) {
       const a = pts[i];
       const b = pts[(i + 3) % pts.length];
@@ -369,6 +376,10 @@ export class RaceScene extends Phaser.Scene {
     if (!this.track.daylight) return;
     if (this.track.envId === 'forest') {
       this.drawForestScenery();
+      return;
+    }
+    if (this.track.envId === 'desert') {
+      this.drawDesertScenery();
       return;
     }
     const size = this.track.size;
@@ -582,6 +593,76 @@ export class RaceScene extends Phaser.Scene {
     }
   }
 
+  /** Desert Dunes trackside: rock formations (solid) and saguaro cacti. */
+  private drawDesertScenery(): void {
+    const size = this.track.size;
+    const roadHalf = this.track.roadWidth / 2;
+    const pts = this.path.pts;
+    const minDistToRoad = (x: number, y: number): number => {
+      let best = Infinity;
+      for (let i = 0; i < pts.length; i += 2) {
+        const dx = pts[i].x - x;
+        const dy = pts[i].y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) best = d2;
+      }
+      return Math.sqrt(best);
+    };
+
+    const g = this.add.graphics().setDepth(0.5);
+    const placed: { x: number; y: number; r: number }[] = [];
+
+    // Rock formations: clusters of overlapping boulders.
+    let rocks = 0;
+    for (let tries = 0; tries < 900 && rocks < 70; tries++) {
+      const r = 24 + this.rand() * 34;
+      const x = 90 + this.rand() * (size - 180);
+      const y = 90 + this.rand() * (size - 180);
+      const roadDist = minDistToRoad(x, y);
+      if (roadDist < roadHalf + r + 26) continue;
+      if (roadDist > 1000 && this.rand() < 0.55) continue;
+      if (placed.some((p) => Math.hypot(p.x - x, p.y - y) < (p.r + r) * 0.95)) continue;
+      placed.push({ x, y, r });
+      rocks++;
+
+      g.fillStyle(0x6e5a40, 0.4).fillCircle(x + 7, y + 7, r); // shadow
+      g.fillStyle(0x9a815c, 1).fillCircle(x, y, r);
+      g.fillStyle(0xb09a70, 1).fillCircle(x - r * 0.2, y - r * 0.25, r * 0.62);
+      g.fillStyle(0x86704e, 0.9).fillCircle(x + r * 0.3, y + r * 0.25, r * 0.4);
+      this.props.push({ x, y, r: r * 0.85 });
+    }
+
+    // Saguaro cacti: green pillar + two arms.
+    let cacti = 0;
+    for (let tries = 0; tries < 500 && cacti < 45; tries++) {
+      const r = 11 + this.rand() * 8;
+      const x = 90 + this.rand() * (size - 180);
+      const y = 90 + this.rand() * (size - 180);
+      const roadDist = minDistToRoad(x, y);
+      if (roadDist < roadHalf + r + 30) continue;
+      if (roadDist > 800 && this.rand() < 0.5) continue;
+      if (placed.some((p) => Math.hypot(p.x - x, p.y - y) < p.r + r + 12)) continue;
+      placed.push({ x, y, r: r + 8 });
+      cacti++;
+
+      g.fillStyle(0x2c5c28, 0.4).fillCircle(x + 4, y + 4, r);
+      g.fillStyle(0x3e8a38, 1).fillCircle(x, y, r);
+      g.fillStyle(0x54a84c, 1).fillCircle(x - r * 0.25, y - r * 0.25, r * 0.55);
+      // Arms.
+      g.fillStyle(0x3e8a38, 1).fillCircle(x - r * 1.1, y - r * 0.4, r * 0.45);
+      g.fillStyle(0x3e8a38, 1).fillCircle(x + r * 1.05, y + r * 0.5, r * 0.4);
+      this.props.push({ x, y, r: r * 1.1 });
+    }
+
+    // Decorative dry scrub (no collision).
+    for (let i = 0; i < 60; i++) {
+      const x = 80 + this.rand() * (size - 160);
+      const y = 80 + this.rand() * (size - 160);
+      if (minDistToRoad(x, y) < roadHalf + 30) continue;
+      g.fillStyle(0xa8905c, 0.5).fillCircle(x, y, 5 + this.rand() * 7);
+    }
+  }
+
   private pointOnTrack(minGapFromStart = 25): { x: number; y: number; idx: number } {
     const n = this.path.pts.length;
     const idx = (minGapFromStart + Math.floor(this.rand() * (n - minGapFromStart * 2))) % n;
@@ -783,7 +864,7 @@ export class RaceScene extends Phaser.Scene {
         if (!pickup.active) continue;
         const dx = pickup.x - car.x;
         const dy = pickup.y - car.y;
-        if (dx * dx + dy * dy > 36 * 36) continue;
+        if (dx * dx + dy * dy > 44 * 44) continue;
         pickup.active = false;
         pickup.respawnAt = time + (pickup.kind === 'barrel' ? 12_000 : 8000);
         pickup.sprite.setVisible(false);

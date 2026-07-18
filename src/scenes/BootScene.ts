@@ -39,6 +39,7 @@ export class BootScene extends Phaser.Scene {
     this.makeKnob();
     this.makeDaylightCobbles();
     this.makeDaylightGrass();
+    this.makeDaylightSand();
     this.makeVent();
     this.makeCrate();
     this.makeAwning();
@@ -102,52 +103,52 @@ export class BootScene extends Phaser.Scene {
     });
   }
 
-  /** Battery (for the EV crowd) — balanced charge. */
+  /** Battery (for the EV crowd) — balanced charge. Oversized for visibility. */
   private makeBattery(): void {
-    this.canvasTexture('pickup-battery', 44, 44, (ctx) => {
-      this.glowBehind(ctx, 44, 44, '#a8ff3e');
+    this.canvasTexture('pickup-battery', 58, 58, (ctx) => {
+      this.glowBehind(ctx, 58, 58, '#a8ff3e');
       ctx.fillStyle = '#3e9c28';
       ctx.beginPath();
-      ctx.roundRect(13, 13, 18, 24, 3);
+      ctx.roundRect(17, 17, 24, 32, 4);
       ctx.fill();
       // Terminals.
       ctx.fillStyle = '#d8e8dc';
-      ctx.fillRect(16, 10, 4, 4);
-      ctx.fillRect(24, 10, 4, 4);
+      ctx.fillRect(21, 13, 5, 5);
+      ctx.fillRect(32, 13, 5, 5);
       // Lightning bolt.
       ctx.fillStyle = '#eaffb0';
       ctx.beginPath();
-      ctx.moveTo(24, 16);
-      ctx.lineTo(17, 26);
-      ctx.lineTo(21.5, 26);
-      ctx.lineTo(20, 34);
-      ctx.lineTo(27, 24);
-      ctx.lineTo(22.5, 24);
+      ctx.moveTo(32, 21);
+      ctx.lineTo(22, 34.5);
+      ctx.lineTo(28, 34.5);
+      ctx.lineTo(26, 45);
+      ctx.lineTo(36, 31.5);
+      ctx.lineTo(30, 31.5);
       ctx.closePath();
       ctx.fill();
     });
   }
 
-  /** The NITRO barrel from the 1990 original — rare overdrive power-up. */
+  /** The NITRO barrel from the 1990 original — big, bold, unmissable. */
   private makeBarrel(): void {
-    this.canvasTexture('pickup-barrel', 56, 56, (ctx) => {
-      this.glowBehind(ctx, 56, 56, '#ffd166');
+    this.canvasTexture('pickup-barrel', 74, 74, (ctx) => {
+      this.glowBehind(ctx, 74, 74, '#ffd166');
       ctx.fillStyle = '#d98a1f';
       ctx.beginPath();
-      ctx.roundRect(16, 12, 24, 32, 7);
+      ctx.roundRect(21, 16, 32, 42, 9);
       ctx.fill();
       // Barrel hoops.
       ctx.fillStyle = '#8f5510';
-      ctx.fillRect(16, 18, 24, 3.5);
-      ctx.fillRect(16, 34, 24, 3.5);
+      ctx.fillRect(21, 24, 32, 4.5);
+      ctx.fillRect(21, 45, 32, 4.5);
       // Shine.
       ctx.fillStyle = '#ffce7a';
-      ctx.fillRect(20, 14, 4, 28);
+      ctx.fillRect(26, 18, 5, 38);
       // "N" for nitro.
       ctx.fillStyle = '#fff6dd';
-      ctx.font = 'bold 11px Arial';
+      ctx.font = 'bold 15px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('N', 30, 30.5);
+      ctx.fillText('N', 40, 42);
     });
   }
 
@@ -355,6 +356,36 @@ export class BootScene extends Phaser.Scene {
         ctx.beginPath();
         ctx.ellipse(x, y, 2 + rand() * 5, 1.5 + rand() * 3, rand() * Math.PI, 0, Math.PI * 2);
         ctx.fill();
+      }
+    });
+  }
+
+  /** Daylight desert sand tile with wind ripples. */
+  private makeDaylightSand(): void {
+    this.canvasTexture('floor-desert-day', 256, 256, (ctx) => {
+      ctx.fillStyle = '#c8a86a';
+      ctx.fillRect(0, 0, 256, 256);
+      let seed = 5711;
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      // Wind ripples: soft curved strokes in lighter/darker sand.
+      for (let i = 0; i < 46; i++) {
+        ctx.strokeStyle = rand() < 0.5 ? 'rgba(180, 148, 88, 0.5)' : 'rgba(226, 198, 138, 0.55)';
+        ctx.lineWidth = 1.5 + rand() * 2;
+        const x = rand() * 256;
+        const y = rand() * 256;
+        const len = 30 + rand() * 60;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + len / 2, y - 6 - rand() * 8, x + len, y);
+        ctx.stroke();
+      }
+      // Speckle grains.
+      for (let i = 0; i < 180; i++) {
+        ctx.fillStyle = rand() < 0.5 ? '#b8975a' : '#d8ba7e';
+        ctx.fillRect(rand() * 256, rand() * 256, 2, 2);
       }
     });
   }

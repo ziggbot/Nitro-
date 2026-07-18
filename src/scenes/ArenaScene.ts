@@ -416,7 +416,7 @@ export class ArenaScene extends Phaser.Scene {
         if (!barrel.active) continue;
         const bdx = barrel.x - car.x;
         const bdy = barrel.y - car.y;
-        if (bdx * bdx + bdy * bdy > 36 * 36) continue;
+        if (bdx * bdx + bdy * bdy > 44 * 44) continue;
         barrel.active = false;
         barrel.respawnAt = time + 15_000;
         barrel.sprite.setVisible(false);
