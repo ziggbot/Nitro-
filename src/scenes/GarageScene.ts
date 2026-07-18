@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { CAR_CLASSES, UPGRADES, effectiveStats } from '../config/cars';
-import { PAINTS, TRAIL_STYLES } from '../config/cosmetics';
+import { PAINTS } from '../config/cosmetics';
+import { FUELS } from '../config/fuels';
 import { PALETTE, hexToCss } from '../config/palette';
 import { sfx } from '../game/sfx';
 import { levelForXp } from '../meta/Progression';
 import { loadSave, persistSave, type SaveData } from '../meta/SaveGame';
-import { buyUpgrade, unlockedCars, unlockedPaints, unlockedTrails } from '../meta/Unlocks';
+import { buyUpgrade, unlockedCars, unlockedPaints } from '../meta/Unlocks';
 import { bodyStyle, clearScene, fitToScreen, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
 
 /** The modernized Nitro pit stop: cars, upgrades, cosmetics. */
@@ -60,8 +61,8 @@ export class GarageScene extends Phaser.Scene {
 
     this.add.text(650, 100, 'PAINT', titleStyle(16, hexToCss(PALETTE.uiText)));
     this.buildPaints(672, 150, 58, 4);
-    this.add.text(650, 268, 'TRAIL STYLE', titleStyle(16, hexToCss(PALETTE.uiText)));
-    this.buildTrails(790, 300, 42, 280);
+    this.add.text(650, 268, 'FUEL TYPE', titleStyle(16, hexToCss(PALETTE.uiText)));
+    this.buildFuels(790, 302, 44, 280);
 
     makeButton(this, 480, 566, 220, 44, '← BACK TO MENU', () => this.scene.start('menu'));
   }
@@ -86,11 +87,11 @@ export class GarageScene extends Phaser.Scene {
     this.add.text(24, paintTop - 20, 'PAINT', titleStyle(15, hexToCss(PALETTE.uiText)));
     this.buildPaints(48, paintTop + 26, 52, 7);
 
-    const trailTop = paintTop + 84;
-    this.add.text(24, trailTop - 18, 'TRAIL STYLE', titleStyle(15, hexToCss(PALETTE.uiText)));
-    this.buildTrails(210, trailTop + 26, 40, 384);
+    const fuelTop = paintTop + 84;
+    this.add.text(24, fuelTop - 18, 'FUEL TYPE', titleStyle(15, hexToCss(PALETTE.uiText)));
+    this.buildFuels(210, fuelTop + 26, 42, 384);
 
-    makeButton(this, 210, trailTop + 26 + TRAIL_STYLES.length * 40 + 26, 300, 46, '← BACK TO MENU', () => this.scene.start('menu'));
+    makeButton(this, 210, fuelTop + 26 + FUELS.length * 42 + 28, 300, 46, '← BACK TO MENU', () => this.scene.start('menu'));
   }
 
   // ---------- Shared building blocks ----------
@@ -197,34 +198,31 @@ export class GarageScene extends Phaser.Scene {
     });
   }
 
-  private buildTrails(cx: number, startY: number, rowH: number, pw: number): void {
-    const owned = unlockedTrails(this.save);
-    TRAIL_STYLES.forEach((style, i) => {
+  /** Fuel type: free choice, defines the car's trail & exhaust identity. */
+  private buildFuels(cx: number, startY: number, rowH: number, pw: number): void {
+    FUELS.forEach((fuel, i) => {
       const y = startY + i * rowH;
-      const has = owned.includes(style.id);
-      const selected = this.save.selectedTrail === style.id;
+      const selected = this.save.selectedFuel === fuel.id;
       const panel = this.add
         .rectangle(cx, y, pw - 20, rowH - 6, PALETTE.uiPanel, 0.8)
         .setStrokeStyle(selected ? 3 : 1, selected ? 0xffffff : PALETTE.uiPanelStroke);
       const left = cx - (pw - 20) / 2 + 12;
-      style.colors.forEach((c, ci) => {
-        this.add.rectangle(left + ci * 20, y, 18, 9, has ? c : 0x24304a);
+      fuel.trailColors.forEach((c, ci) => {
+        this.add.rectangle(left + ci * 20, y, 18, 9, c);
       });
       this.add.text(
-        left + style.colors.length * 20 + 10,
-        y - 7,
-        has ? style.name : `🔒 ${style.unlock.label}`,
-        bodyStyle(11, hexToCss(has ? PALETTE.uiText : PALETTE.uiDim)),
+        left + fuel.trailColors.length * 20 + 10,
+        y - 8,
+        `${fuel.emoji} ${fuel.name}`,
+        bodyStyle(12, hexToCss(selected ? PALETTE.uiText : PALETTE.uiDim)),
       );
-      if (has) {
-        panel.setInteractive({ useHandCursor: true }).on('pointerup', (pointer: Phaser.Input.Pointer) => {
-          if (pointer.getDistance() > 16) return;
-          sfx.click();
-          this.save.selectedTrail = style.id;
-          persistSave(this.save);
-          this.buildUi();
-        });
-      }
+      panel.setInteractive({ useHandCursor: true }).on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        if (pointer.getDistance() > 16) return;
+        sfx.click();
+        this.save.selectedFuel = fuel.id;
+        persistSave(this.save);
+        this.buildUi();
+      });
     });
   }
 

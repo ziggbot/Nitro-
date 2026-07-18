@@ -9,6 +9,7 @@ import { loadSave, persistSave, type SaveData } from '../meta/SaveGame';
 import { unlockedArenas } from '../meta/Unlocks';
 import { bodyStyle, clearScene, fitToScreen, formatMs, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
 import { decodeGhost, type GhostData } from '../game/ghost';
+import { FUELS } from '../config/fuels';
 
 export class MenuScene extends Phaser.Scene {
   private save!: SaveData;
@@ -74,8 +75,10 @@ export class MenuScene extends Phaser.Scene {
     this.buildDriverCard(140, 240, 240, 170);
     this.buildArenaSelector(480, 240, 330, 170);
 
+    this.buildFuelPicker(480, 340, 108, 30);
+
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
-    const play = makeButton(this, 480, 380, 260, 50, '▶  ARENA', () => this.startRun(), PALETTE.lime);
+    const play = makeButton(this, 480, 386, 260, 46, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
     makeButton(this, 480, 434, 260, 44, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
     if (this.pendingGhost) {
@@ -120,17 +123,18 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.buildArenaSelector(210, 300, 384, 136);
+    this.buildFuelPicker(210, 386, 118, 32);
 
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
-    const play = makeButton(this, 210, 404, 336, 48, '▶  ARENA', () => this.startRun(), PALETTE.lime);
+    const play = makeButton(this, 210, 428, 336, 42, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 210, 456, 336, 42, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
+    makeButton(this, 210, 474, 336, 40, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
     if (this.pendingGhost) {
       const g = this.pendingGhost;
-      makeButton(this, 210, 502, 336, 40, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
-      makeButton(this, 210, 544, 336, 32, '🔧 GARAGE', () => this.scene.start('garage'));
+      makeButton(this, 210, 516, 336, 36, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
+      makeButton(this, 210, 554, 336, 30, '🔧 GARAGE', () => this.scene.start('garage'));
     } else {
-      makeButton(this, 210, 506, 336, 38, '🔧 GARAGE', () => this.scene.start('garage'));
+      makeButton(this, 210, 518, 336, 36, '🔧 GARAGE', () => this.scene.start('garage'));
     }
 
     this.buildMissions(26, 584, 368);
@@ -141,6 +145,28 @@ export class MenuScene extends Phaser.Scene {
   }
 
   // ---------- Shared building blocks ----------
+
+  /** Fuel/drivetrain picker — decides your trail & exhaust identity. */
+  private buildFuelPicker(cx: number, y: number, w: number, h: number): void {
+    FUELS.forEach((fuel, i) => {
+      const x = cx + (i - 1) * (w + 10);
+      const selected = this.save.selectedFuel === fuel.id;
+      const color = fuel.trailColors[1];
+      const bg = this.add
+        .rectangle(x, y, w, h, selected ? 0x1a2a44 : PALETTE.uiPanel, 0.92)
+        .setStrokeStyle(selected ? 3 : 1.5, selected ? 0xffffff : color);
+      this.add
+        .text(x, y, `${fuel.emoji} ${fuel.name.toUpperCase()}`, bodyStyle(11, hexToCss(color)))
+        .setOrigin(0.5);
+      bg.setInteractive({ useHandCursor: true }).on('pointerup', (p: Phaser.Input.Pointer) => {
+        if (p.getDistance() > 16) return;
+        sfx.click();
+        this.save.selectedFuel = fuel.id;
+        persistSave(this.save);
+        this.buildUi();
+      });
+    });
+  }
 
   private buildDriverCard(cx: number, cy: number, pw: number, ph: number): void {
     makePanel(this, cx, cy, pw, ph);

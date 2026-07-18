@@ -21,6 +21,7 @@ export interface SaveData {
   selectedCar: string;
   selectedPaint: string;
   selectedTrail: string;
+  selectedFuel: string;
   selectedArena: string;
   /** upgrades[carId][upgradeId] = level */
   upgrades: Record<string, Partial<Record<UpgradeId, number>>>;
@@ -58,6 +59,7 @@ export function defaultSave(): SaveData {
     selectedCar: 'sports',
     selectedPaint: 'cyan',
     selectedTrail: 'flame',
+    selectedFuel: 'petrol',
     selectedArena: 'city-day',
     upgrades: {},
     lifetime: {

@@ -61,6 +61,8 @@ export class CarSim {
   overdriveTimer = 0;
   /** Race mode: boost burns fuel only (Nitro's nitros), no trail needed. */
   freeBoost = false;
+  /** Drivetrain identity ('petrol' | 'gas' | 'electric') — drives visuals. */
+  fuelId = 'petrol';
   /** Rank in the round leaderboard, updated by the arena. */
   rank = 0;
 

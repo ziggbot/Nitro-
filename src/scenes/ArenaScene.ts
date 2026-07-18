@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { arenaById, type ArenaDef } from '../config/arenas';
 import { CAR_CLASSES, effectiveStats } from '../config/cars';
-import { PAINTS, TRAIL_STYLES } from '../config/cosmetics';
+import { PAINTS } from '../config/cosmetics';
+import { fuelById, randomFuel, type FuelDef } from '../config/fuels';
 import { ENV_PALETTES, PALETTE } from '../config/palette';
 import type { CauseOfDeath, Driver, RunResult } from '../core/types';
 import { BotDriver, randomPersonality, type BotWorld } from '../ai/BotDriver';
@@ -9,6 +10,7 @@ import { botNames } from '../ai/names';
 import { CarSim, MIN_TRAIL, TRAIL_SPACING } from '../game/CarSim';
 import { PlayerDriver } from '../game/PlayerDriver';
 import { SpatialGrid, type GridPoint } from '../game/SpatialGrid';
+import { ExhaustFx } from '../game/exhaust';
 import { sfx } from '../game/sfx';
 import { music } from '../game/music';
 import { loadSave, type SaveData } from '../meta/SaveGame';
@@ -18,42 +20,7 @@ interface CarView {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
-  flames: Phaser.GameObjects.Particles.ParticleEmitter;
-}
-
-/** Exhaust-flame emitter that fires backwards out of the car's tailpipes. */
-export function makeExhaustFlames(
-  scene: Phaser.Scene,
-  car: CarSim,
-): Phaser.GameObjects.Particles.ParticleEmitter {
-  const FLAME_TINTS = [0xfff6c0, 0xffd020, 0xff8a1f, 0xff3b18];
-  const flames = scene.add.particles(0, 0, 'dot', {
-    speed: { min: 80, max: 190 },
-    angle: { onEmit: () => Phaser.Math.RadToDeg(car.heading + Math.PI) + (Math.random() * 30 - 15) },
-    x: { min: -6, max: 6 },
-    y: { min: -6, max: 6 },
-    scale: { start: 1.7, end: 0 },
-    alpha: { start: 0.95, end: 0 },
-    lifespan: { min: 150, max: 330 },
-    frequency: 16,
-    quantity: 2,
-    tint: { onEmit: () => FLAME_TINTS[Math.floor(Math.random() * FLAME_TINTS.length)] },
-    blendMode: Phaser.BlendModes.ADD,
-    emitting: false,
-  });
-  flames.setDepth(9);
-  return flames;
-}
-
-/** Position the flames at the rear bumper; emit only while boosting. */
-export function updateExhaustFlames(
-  flames: Phaser.GameObjects.Particles.ParticleEmitter,
-  car: CarSim,
-  rearOffset: number,
-): void {
-  const hot = car.alive && (car.boosting || car.overdriveTimer > 0);
-  flames.setPosition(car.x - Math.cos(car.heading) * rearOffset, car.y - Math.sin(car.heading) * rearOffset);
-  flames.emitting = hot;
+  flames: ExhaustFx;
 }
 
 interface ScrapOrb {
@@ -167,17 +134,17 @@ export class ArenaScene extends Phaser.Scene {
     // Rare NITRO barrels, the original game's power-up.
     for (let i = 0; i < 6; i++) this.spawnBarrel();
 
-    // Player car with saved cosmetics + garage upgrades.
+    // Player car with saved cosmetics, fuel type + garage upgrades.
     const classDef = CAR_CLASSES.find((c) => c.id === this.save.selectedCar) ?? CAR_CLASSES[0];
     const paint = PAINTS.find((p) => p.id === this.save.selectedPaint) ?? PAINTS[0];
-    const trailStyle = TRAIL_STYLES.find((t) => t.id === this.save.selectedTrail) ?? TRAIL_STYLES[0];
+    const playerFuel = fuelById(this.save.selectedFuel);
     this.playerDriver = new PlayerDriver(this, 'YOU');
     this.player = this.addCar(
       this.playerDriver,
       effectiveStats(classDef.id, this.save.upgrades[classDef.id] ?? {}),
       classDef.texture,
       paint.tint,
-      trailStyle.colors,
+      playerFuel,
       true,
     );
     this.playerDriver.car = this.player;
@@ -255,10 +222,11 @@ export class ArenaScene extends Phaser.Scene {
     stats: ReturnType<typeof effectiveStats>,
     texture: string,
     tint: number,
-    trailColors: number[],
+    fuel: FuelDef,
     isPlayer: boolean,
   ): CarSim {
-    const car = new CarSim(this.nextCarId++, driver, stats, tint, trailColors);
+    const car = new CarSim(this.nextCarId++, driver, stats, tint, fuel.trailColors);
+    car.fuelId = fuel.id;
     const pos = this.randomOpenPos(isPlayer ? 600 : 250);
     car.spawnAt(pos.x, pos.y, Math.random() * Math.PI * 2);
 
@@ -273,7 +241,7 @@ export class ArenaScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     const container = this.add.container(pos.x, pos.y, [sprite, label]).setDepth(10);
-    const flames = makeExhaustFlames(this, car);
+    const flames = new ExhaustFx(this, car, fuel);
 
     this.cars.push(car);
     this.views.set(car.id, { container, sprite, label, flames });
@@ -285,8 +253,7 @@ export class ArenaScene extends Phaser.Scene {
     const driver = new BotDriver(name, randomPersonality());
     const classDef = CAR_CLASSES[Math.floor(Math.random() * CAR_CLASSES.length)];
     const paint = PAINTS[Math.floor(Math.random() * PAINTS.length)];
-    const style = TRAIL_STYLES[Math.floor(Math.random() * TRAIL_STYLES.length)];
-    const car = this.addCar(driver, { ...classDef.base }, classDef.texture, paint.tint, style.colors, false);
+    const car = this.addCar(driver, { ...classDef.base }, classDef.texture, paint.tint, randomFuel(), false);
     // Bots start with a bit of random progress so the arena feels lived-in.
     car.trailLimit = MIN_TRAIL + Math.floor(Math.random() * 40);
     driver.car = car;
@@ -674,7 +641,7 @@ export class ArenaScene extends Phaser.Scene {
   private updateViews(): void {
     for (const car of this.cars) {
       const view = this.views.get(car.id)!;
-      updateExhaustFlames(view.flames, car, 44 * CAR_SCALE);
+      view.flames.update(car, 44 * CAR_SCALE);
       if (!car.alive) continue;
       view.container.setPosition(car.x, car.y);
       view.sprite.setRotation(car.heading);
@@ -687,23 +654,40 @@ export class ArenaScene extends Phaser.Scene {
   private drawTrails(): void {
     const g = this.trailGfx;
     g.clear();
+    const now = this.time.now;
     for (const car of this.cars) {
       if (!car.alive || car.trail.length < 2) continue;
       const pts = car.trail;
       const colors = car.trailColors;
+      const fuel = fuelById(car.fuelId);
+      const isPlayer = car.driver.isPlayer;
       const n = pts.length;
       const hot = car.boosting || car.overdriveTimer > 0;
+      // The player's trail is wider and brighter than same-fuel rivals.
+      const widthMult = isPlayer ? 1.25 : 1;
       for (let i = 1; i < n; i++) {
         // Head (newest, end of array) = colors[0]; tail = last color.
         const frac = 1 - i / n;
         const color = sampleGradient(colors, frac);
-        const alphaScale = hot ? 1.25 : 1;
+        let alphaScale = (hot ? 1.25 : 1) * (isPlayer ? 1.1 : 0.85);
+        // Electric trails crackle and flicker along their length.
+        if (fuel.flicker) alphaScale *= 0.65 + 0.35 * Math.sin(now * 0.02 + i * 0.9);
+        // Gas trails ride on a wide soft smoke streak.
+        if (fuel.smoke) {
+          g.lineStyle(24 * widthMult, 0x9a9aa2, 0.09 * alphaScale);
+          g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
+        }
         // Outer glow pass.
-        g.lineStyle(15, color, 0.16 * alphaScale);
+        g.lineStyle(15 * widthMult, color, 0.16 * alphaScale);
         g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
         // Bright core.
-        g.lineStyle(5.5, color, Math.min(1, 0.5 + 0.45 * (i / n)) * alphaScale);
+        g.lineStyle(5.5 * widthMult, color, Math.min(1, 0.5 + 0.45 * (i / n)) * alphaScale);
         g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
+        // Player-only white filament makes YOUR trail unmistakable.
+        if (isPlayer) {
+          g.lineStyle(2, 0xffffff, 0.55 + 0.3 * (i / n));
+          g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
+        }
       }
     }
   }
