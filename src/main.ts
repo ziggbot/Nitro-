@@ -5,6 +5,8 @@ import { BootScene } from './scenes/BootScene';
 import { GarageScene } from './scenes/GarageScene';
 import { HudScene } from './scenes/HudScene';
 import { MenuScene } from './scenes/MenuScene';
+import { RaceScene } from './scenes/RaceScene';
+import { RaceHudScene } from './scenes/RaceHudScene';
 import { ResultsScene } from './scenes/ResultsScene';
 
 const game = new Phaser.Game({
@@ -23,7 +25,7 @@ const game = new Phaser.Game({
     // Steering wheel + boost button need simultaneous touches.
     activePointers: 3,
   },
-  scene: [BootScene, MenuScene, GarageScene, ArenaScene, HudScene, ResultsScene],
+  scene: [BootScene, MenuScene, GarageScene, ArenaScene, HudScene, RaceScene, RaceHudScene, ResultsScene],
 });
 
 // Exposed for the headless smoke test (scripts/smoke.mjs) and debugging.

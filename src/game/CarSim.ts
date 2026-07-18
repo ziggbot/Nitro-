@@ -59,6 +59,8 @@ export class CarSim {
   boosting = false;
   /** Seconds of nitro-barrel overdrive left. */
   overdriveTimer = 0;
+  /** Race mode: boost burns fuel only (Nitro's nitros), no trail needed. */
+  freeBoost = false;
   /** Rank in the round leaderboard, updated by the arena. */
   rank = 0;
 
@@ -110,10 +112,10 @@ export class CarSim {
     const s = this.stats;
     const outOfFuel = this.fuel <= 0;
 
-    // Boost needs trail to burn and fuel in the tank.
-    this.boosting = input.boost && this.trailLimit > MIN_TRAIL && !outOfFuel;
+    // Boost needs trail to burn (arena) or just fuel (race mode).
+    this.boosting = input.boost && !outOfFuel && (this.freeBoost || this.trailLimit > MIN_TRAIL);
     if (this.boosting) {
-      this.trailLimit = Math.max(MIN_TRAIL, this.trailLimit - BOOST_TRAIL_BURN * dt);
+      if (!this.freeBoost) this.trailLimit = Math.max(MIN_TRAIL, this.trailLimit - BOOST_TRAIL_BURN * dt);
       this.boostMs += dt * 1000;
     }
 

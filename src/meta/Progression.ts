@@ -49,6 +49,23 @@ export function scrapForRun(r: { kills: number; orbsEaten: number; score: number
   return Math.round(r.kills * 15 + r.orbsEaten * 0.2 + r.score * 0.3);
 }
 
+/** Rewards for a race by finishing position (1-based). DNF = position 0. */
+export function raceRewards(
+  position: number,
+  totalCars: number,
+  rewardMult: number,
+): { xp: number; scrap: number; stars: number } {
+  if (position < 1) {
+    // DNF still pays a little for showing up.
+    return { xp: Math.round(60 * rewardMult), scrap: Math.round(25 * rewardMult), stars: 0 };
+  }
+  const beaten = totalCars - position;
+  const xp = Math.round((160 + beaten * 130) * rewardMult);
+  const scrap = Math.round((70 + beaten * 75) * rewardMult);
+  const stars = position === 1 ? 3 : position === 2 ? 2 : position === 3 ? 1 : 0;
+  return { xp, scrap, stars };
+}
+
 /** Apply an arena reward multiplier to a raw run result. */
 export function applyRewards(
   raw: Omit<RunResult, 'xpEarned' | 'scrapEarned' | 'starsEarned'>,

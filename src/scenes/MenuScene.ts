@@ -70,14 +70,15 @@ export class MenuScene extends Phaser.Scene {
     this.buildArenaSelector(480, 240, 330, 170);
 
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
-    const play = makeButton(this, 480, 392, 260, 58, '▶  PLAY', () => this.startRun(), PALETTE.lime);
+    const play = makeButton(this, 480, 384, 260, 54, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 480, 456, 260, 42, '🔧 GARAGE', () => this.scene.start('garage'));
+    makeButton(this, 480, 444, 260, 46, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
+    makeButton(this, 480, 498, 260, 38, '🔧 GARAGE', () => this.scene.start('garage'));
 
     this.buildMissions(688, 152, 264);
 
     this.add
-      .text(480, 546, 'A tribute to NITRO (Psygnosis, 1990)  ·  M: music on/off', bodyStyle(11, hexToCss(PALETTE.uiDim)))
+      .text(480, 550, 'A tribute to NITRO (Psygnosis, 1990)  ·  M: music on/off', bodyStyle(11, hexToCss(PALETTE.uiDim)))
       .setOrigin(0.5);
   }
 
@@ -110,11 +111,12 @@ export class MenuScene extends Phaser.Scene {
     this.buildArenaSelector(210, 300, 384, 136);
 
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
-    const play = makeButton(this, 210, 412, 336, 58, '▶  PLAY', () => this.startRun(), PALETTE.lime);
+    const play = makeButton(this, 210, 408, 336, 52, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    makeButton(this, 210, 474, 336, 42, '🔧 GARAGE', () => this.scene.start('garage'));
+    makeButton(this, 210, 464, 336, 44, '🏁 RACE — City GP', () => this.scene.start('race', { trackId: 'city-gp' }), PALETTE.amber);
+    makeButton(this, 210, 514, 336, 38, '🔧 GARAGE', () => this.scene.start('garage'));
 
-    this.buildMissions(26, 524, 368);
+    this.buildMissions(26, 560, 368);
 
     this.add
       .text(210, 796, 'A tribute to NITRO (1990)  ·  M: music', bodyStyle(10, hexToCss(PALETTE.uiDim)))
