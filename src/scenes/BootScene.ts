@@ -35,6 +35,8 @@ export class BootScene extends Phaser.Scene {
     this.makeGasBottle();
     this.makeBattery();
     this.makeBarrel();
+    this.makeBomb();
+    this.makeAmmo();
     this.makeWheel();
     this.makeKnob();
     this.makeDaylightCobbles();
@@ -258,6 +260,57 @@ export class BootScene extends Phaser.Scene {
       ctx.lineTo(256, 64);
       ctx.lineTo(250, 122);
       ctx.closePath();
+      ctx.fill();
+    });
+  }
+
+  /** Round bomb with a burning fuse — explodes when driven near. */
+  private makeBomb(): void {
+    this.canvasTexture('bomb', 52, 52, (ctx) => {
+      // Sphere with highlight.
+      const g = ctx.createRadialGradient(20, 22, 4, 26, 30, 20);
+      g.addColorStop(0, '#4a505e');
+      g.addColorStop(0.5, '#22262e');
+      g.addColorStop(1, '#0e1014');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(26, 30, 18, 0, Math.PI * 2);
+      ctx.fill();
+      // Cap + curling fuse.
+      ctx.fillStyle = '#3a4048';
+      ctx.fillRect(29, 10, 8, 6);
+      ctx.strokeStyle = '#a8823c';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(33, 10);
+      ctx.quadraticCurveTo(38, 2, 45, 6);
+      ctx.stroke();
+      // Fuse tip ember (a pulsing dot is layered on top in-scene).
+      ctx.fillStyle = '#ffd040';
+      ctx.beginPath();
+      ctx.arc(45, 6, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  /** Fireball ammo pickup. */
+  private makeAmmo(): void {
+    this.canvasTexture('pickup-ammo', 48, 48, (ctx) => {
+      this.glowBehind(ctx, 48, 48, '#ff5a1f');
+      // Fireball with a flame tail.
+      ctx.fillStyle = '#ff8a1f';
+      ctx.beginPath();
+      ctx.moveTo(10, 12);
+      ctx.quadraticCurveTo(20, 20, 18, 30);
+      ctx.quadraticCurveTo(12, 24, 10, 12);
+      ctx.fill();
+      const g = ctx.createRadialGradient(28, 27, 2, 30, 29, 13);
+      g.addColorStop(0, '#fff6c0');
+      g.addColorStop(0.5, '#ffb020');
+      g.addColorStop(1, '#ff5a1f');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(30, 29, 12, 0, Math.PI * 2);
       ctx.fill();
     });
   }

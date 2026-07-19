@@ -600,6 +600,17 @@ export class ArenaScene extends Phaser.Scene {
           const push = (minD - d) / 2;
           const nx = dx / d;
           const ny = dy / d;
+          // Ramming: a hard enough shunt sends the victim into a spin.
+          const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+          if (rel > 260 && b.spinTimer <= 0) {
+            b.spinOut();
+            b.speed *= 0.7;
+            sfx.spin();
+          } else if (rel < -260 && a.spinTimer <= 0) {
+            a.spinOut();
+            a.speed *= 0.7;
+            sfx.spin();
+          }
           a.x -= nx * push;
           a.y -= ny * push;
           b.x += nx * push;

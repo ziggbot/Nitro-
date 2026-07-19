@@ -14,6 +14,7 @@ export class RaceHudScene extends Phaser.Scene {
   private path!: RacePath;
 
   private fuelBar!: Phaser.GameObjects.Rectangle;
+  private ammoText?: Phaser.GameObjects.Text;
   private posText!: Phaser.GameObjects.Text;
   private lapText!: Phaser.GameObjects.Text;
   private timeText!: Phaser.GameObjects.Text;
@@ -43,8 +44,15 @@ export class RaceHudScene extends Phaser.Scene {
     this.add.rectangle(110, 36, 180, 12, 0x0a1020, 0.7).setStrokeStyle(1, PALETTE.uiPanelStroke);
     this.fuelBar = this.add.rectangle(21, 36, 176, 8, PALETTE.lime).setOrigin(0, 0.5);
 
-    // Quit the race (DNF) — reachable on touch devices.
-    makeExitButton(this, 232, 26, () => this.raceScene.quitRace());
+    // Quit the race (DNF) — reachable on touch devices. On narrow screens the
+    // top-center POS text reaches x≈232, so tuck the button under the clock.
+    if (narrow) makeExitButton(this, w - 26, 60, () => this.raceScene.quitRace());
+    else makeExitButton(this, 232, 26, () => this.raceScene.quitRace());
+
+    // Ammo counter, under the fuel panel (weapons on only).
+    if (this.raceScene.shootingOn) {
+      this.ammoText = this.add.text(18, 66, '', bodyStyle(14, hexToCss(PALETTE.amber))).setStroke('#000', 3);
+    }
 
     // Top-center: position + lap, big retro numbers.
     this.posText = this.add
@@ -63,7 +71,7 @@ export class RaceHudScene extends Phaser.Scene {
     makePanel(this, w - this.mapSize / 2 - 14, this.scale.height - this.mapSize / 2 - 14, this.mapSize + 8, this.mapSize + 8, 0.4);
     this.minimap = this.add.graphics();
 
-    new TouchControlsOverlay(this, this.mapSize).build();
+    new TouchControlsOverlay(this, this.mapSize, this.raceScene.shootingOn).build();
 
     // Lap + blackout banners.
     this.raceScene.events.on('lap', this.onLap, this);
@@ -114,6 +122,8 @@ export class RaceHudScene extends Phaser.Scene {
     this.fuelBar.fillColor = frac < 0.2 ? PALETTE.red : frac < 0.45 ? PALETTE.amber : PALETTE.lime;
     if (frac < 0.2) this.fuelBar.setAlpha(0.5 + 0.5 * Math.abs(Math.sin(time / 120)));
     else this.fuelBar.setAlpha(1);
+
+    this.ammoText?.setText(`💥 AMMO ×${this.raceScene.playerAmmo}`);
 
     this.posText.setText(`POS ${this.raceScene.position(player)}/${this.raceScene.racers.length}`);
     this.lapText.setText(`LAP ${Math.min(this.raceScene.lapsTotal, player.tracker.lap + 1)}/${this.raceScene.lapsTotal}`);

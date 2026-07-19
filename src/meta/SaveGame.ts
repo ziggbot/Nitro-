@@ -25,6 +25,10 @@ export interface SaveData {
   selectedTrail: string;
   selectedFuel: string;
   selectedArena: string;
+  /** Fireball weapons in races (front-page toggle). */
+  shootingEnabled: boolean;
+  /** Per-track blackout toggle; wasteland-gp defaults on. */
+  blackoutTracks: Record<string, boolean>;
   /** upgrades[carId][upgradeId] = level */
   upgrades: Record<string, Partial<Record<UpgradeId, number>>>;
   lifetime: {
@@ -64,6 +68,8 @@ export function defaultSave(): SaveData {
     selectedTrail: 'flame',
     selectedFuel: 'petrol',
     selectedArena: 'city-day',
+    shootingEnabled: true,
+    blackoutTracks: { 'wasteland-gp': true },
     upgrades: {},
     lifetime: {
       orbsEaten: 0,
@@ -99,6 +105,7 @@ export function migrate(raw: unknown): SaveData {
     version: SAVE_VERSION,
     lifetime: { ...base.lifetime, ...(data.lifetime ?? {}) },
     upgrades: data.upgrades ?? {},
+    blackoutTracks: { ...base.blackoutTracks, ...(data.blackoutTracks ?? {}) },
     bestRuns: Array.isArray(data.bestRuns) ? data.bestRuns.slice(0, 5) : [],
   };
 }

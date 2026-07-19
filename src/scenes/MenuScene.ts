@@ -66,7 +66,7 @@ export class MenuScene extends Phaser.Scene {
     const narrow = isNarrow(this);
     if (narrow) this.buildNarrow();
     else this.buildWide();
-    fitToScreen(this, start, narrow ? 420 : 960, narrow ? 852 : 560);
+    fitToScreen(this, start, narrow ? 420 : 960, narrow ? 890 : 560);
   }
 
   // ---------- Wide (desktop / landscape) — 960×560 design canvas ----------
@@ -89,19 +89,22 @@ export class MenuScene extends Phaser.Scene {
     makeButton(this, 480, 432, 260, 40, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
     makeButton(this, 410, 474, 130, 34, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
     makeButton(this, 550, 474, 130, 34, '🔧 GARAGE', () => this.scene.start('garage'));
+    this.buildRaceToggles(480, 512, 152, 26);
     if (this.pendingJoin) {
       const code = this.pendingJoin;
-      makeButton(this, 480, 514, 300, 36, `👥 JOIN RACE ${code}`, () => this.scene.start('lobby', { mode: 'join', code }), PALETTE.lime);
+      makeButton(this, 480, 546, 300, 28, `👥 JOIN RACE ${code}`, () => this.scene.start('lobby', { mode: 'join', code }), PALETTE.lime);
     } else if (this.pendingGhost) {
       const g = this.pendingGhost;
-      makeButton(this, 480, 514, 300, 36, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
+      makeButton(this, 480, 546, 300, 28, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
     }
 
     this.buildMissions(688, 152, 264);
 
-    this.add
-      .text(480, 550, 'A tribute to NITRO (Psygnosis, 1990)  ·  M: music on/off', bodyStyle(11, hexToCss(PALETTE.uiDim)))
-      .setOrigin(0.5);
+    if (!this.pendingJoin && !this.pendingGhost) {
+      this.add
+        .text(480, 550, 'A tribute to NITRO (Psygnosis, 1990)  ·  M: music  ·  F: fire', bodyStyle(11, hexToCss(PALETTE.uiDim)))
+        .setOrigin(0.5);
+    }
   }
 
   // ---------- Narrow (mobile portrait) — 420×810 design canvas ----------
@@ -137,25 +140,54 @@ export class MenuScene extends Phaser.Scene {
     const play = makeButton(this, 210, 428, 336, 42, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
     const raceTrack = trackForEnv(ARENAS[this.arenaIndex].envId);
-    makeButton(this, 210, 472, 336, 38, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
-    makeButton(this, 123, 512, 162, 34, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
-    makeButton(this, 297, 512, 162, 34, '🔧 GARAGE', () => this.scene.start('garage'));
+    makeButton(this, 210, 470, 336, 36, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
+    makeButton(this, 123, 508, 162, 32, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
+    makeButton(this, 297, 508, 162, 32, '🔧 GARAGE', () => this.scene.start('garage'));
+    this.buildRaceToggles(210, 544, 160, 28);
     if (this.pendingJoin) {
       const code = this.pendingJoin;
-      makeButton(this, 210, 552, 336, 34, `👥 JOIN RACE ${code}`, () => this.scene.start('lobby', { mode: 'join', code }), PALETTE.lime);
+      makeButton(this, 210, 580, 336, 30, `👥 JOIN RACE ${code}`, () => this.scene.start('lobby', { mode: 'join', code }), PALETTE.lime);
     } else if (this.pendingGhost) {
       const g = this.pendingGhost;
-      makeButton(this, 210, 552, 336, 34, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
+      makeButton(this, 210, 580, 336, 30, `👻 RACE ${g.name.slice(0, 10)} — ${formatMs(g.timeMs)}`, () => this.scene.start('race', { ghost: g }), PALETTE.violet);
     }
 
-    this.buildMissions(26, 584, 368);
+    this.buildMissions(26, 618, 368);
 
     this.add
-      .text(210, 840, 'A tribute to NITRO (1990)  ·  M: music', bodyStyle(10, hexToCss(PALETTE.uiDim)))
+      .text(210, 876, 'A tribute to NITRO (1990)  ·  M: music', bodyStyle(10, hexToCss(PALETTE.uiDim)))
       .setOrigin(0.5);
   }
 
   // ---------- Shared building blocks ----------
+
+  /** Race options: per-track blackouts + global weapons toggle. */
+  private buildRaceToggles(cx: number, y: number, w: number, h: number): void {
+    const track = trackForEnv(ARENAS[this.arenaIndex].envId);
+    const blackoutOn = this.save.blackoutTracks[track.id] ?? false;
+    const weaponsOn = this.save.shootingEnabled;
+
+    const mk = (x: number, label: string, on: boolean, toggle: () => void): void => {
+      const bg = this.add
+        .rectangle(x, y, w, h, on ? 0x1a2a44 : PALETTE.uiPanel, 0.92)
+        .setStrokeStyle(on ? 2.5 : 1.5, on ? PALETTE.lime : 0x445066);
+      this.add.text(x, y, label, bodyStyle(11, hexToCss(on ? PALETTE.lime : PALETTE.uiDim))).setOrigin(0.5);
+      bg.setInteractive({ useHandCursor: true }).on('pointerup', (p: Phaser.Input.Pointer) => {
+        if (p.getDistance() > 16) return;
+        sfx.click();
+        toggle();
+        persistSave(this.save);
+        this.buildUi();
+      });
+    };
+
+    mk(cx - w / 2 - 6, `⚡ BLACKOUT ${blackoutOn ? 'ON' : 'OFF'}`, blackoutOn, () => {
+      this.save.blackoutTracks[track.id] = !blackoutOn;
+    });
+    mk(cx + w / 2 + 6, `🔥 WEAPONS ${weaponsOn ? 'ON' : 'OFF'}`, weaponsOn, () => {
+      this.save.shootingEnabled = !weaponsOn;
+    });
+  }
 
   /** Fuel/drivetrain picker — decides your trail & exhaust identity. */
   private buildFuelPicker(cx: number, y: number, w: number, h: number): void {

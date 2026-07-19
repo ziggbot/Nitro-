@@ -10,9 +10,12 @@ export const touchControls = {
   angle: 0,
   /** Boost button held. */
   boostHeld: false,
+  /** Fire button tapped (consumed by the race scene). */
+  firePressed: false,
 };
 
 export function resetTouchControls(): void {
   touchControls.steering = false;
   touchControls.boostHeld = false;
+  touchControls.firePressed = false;
 }

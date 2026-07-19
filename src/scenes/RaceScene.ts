@@ -15,6 +15,7 @@ import { raceRewards } from '../meta/Progression';
 import { ExhaustFx } from '../game/exhaust';
 import { fuelById, randomFuel } from '../config/fuels';
 import { GhostPlayer, GhostRecorder, type GhostData } from '../game/ghost';
+import { touchControls } from '../game/touchControls';
 import type { NetRoom, NetPlayer, StateMsg } from '../net/room';
 
 interface RacerView {
@@ -31,6 +32,9 @@ interface RacerEntry {
   view: RacerView;
   finished: boolean;
   finishTime: number;
+  /** Fireball ammo carried (weapons mode). */
+  ammo: number;
+  lastFireAt: number;
   /** Multiplayer: remote player's peer id (position comes from the net). */
   netId?: string;
 }
@@ -43,12 +47,33 @@ interface NetworkData {
 const idleDriver: Driver = { name: 'remote', isPlayer: false, getInput: () => ({ steer: 0, throttle: 0, boost: false }) };
 
 interface TrackPickup {
-  kind: 'fuel' | 'barrel';
+  kind: 'fuel' | 'barrel' | 'ammo';
   x: number;
   y: number;
   sprite: Phaser.GameObjects.Image;
   active: boolean;
   respawnAt: number;
+}
+
+interface Bomb {
+  x: number;
+  y: number;
+  sprite: Phaser.GameObjects.Image;
+  ember: Phaser.GameObjects.Image;
+  active: boolean;
+  /** 0 = idle; otherwise the time it detonates. */
+  explodeAt: number;
+  respawnAt: number;
+}
+
+interface Fireball {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ownerId: number;
+  sprite: Phaser.GameObjects.Image;
+  expiresAt: number;
 }
 
 const CAR_RADIUS = 25;
@@ -89,6 +114,12 @@ export class RaceScene extends Phaser.Scene {
   private net?: NetworkData;
   private remoteTargets = new Map<string, StateMsg>();
   private lastNetSend = 0;
+
+  // Weapons + bombs.
+  shootingOn = false;
+  private bombs: Bomb[] = [];
+  private fireballs: Fireball[] = [];
+  private fireQueued = false;
 
   // Wasteland blackouts: pitch black except headlights, exhaust, outline.
   private blackoutWindows: { start: number; end: number }[] = [];
@@ -143,11 +174,16 @@ export class RaceScene extends Phaser.Scene {
     this.blackoutActive = false;
     this.darkness = undefined;
     this.outlineGfx = undefined;
+    this.bombs = [];
+    this.fireballs = [];
+    this.fireQueued = false;
+    // Weapons: front-page toggle; off in network races (not synced yet).
+    this.shootingOn = this.save.shootingEnabled && !data.network;
   }
 
-  /** Blackouts strike on the night wasteland circuit. */
+  /** Blackouts follow the front-page per-track toggle. */
   private get hasBlackouts(): boolean {
-    return this.track.envId === 'wasteland' && !this.track.daylight;
+    return this.save.blackoutTracks[this.track.id] ?? false;
   }
 
   create(): void {
@@ -250,6 +286,8 @@ export class RaceScene extends Phaser.Scene {
         view: { container, sprite, label, flames },
         finished: false,
         finishTime: 0,
+        ammo: this.shootingOn ? 1 : 0,
+        lastFireAt: 0,
         netId: spec.netId,
       };
       if (spec.kind === 'player') {
@@ -302,6 +340,9 @@ export class RaceScene extends Phaser.Scene {
     this.runCountdown();
 
     this.input.keyboard!.on('keydown-ESC', () => this.quitRace());
+    this.input.keyboard!.on('keydown-F', () => {
+      this.fireQueued = true;
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       sfx.stopEngine();
       if (this.net) this.net.room.onState = undefined;
@@ -756,6 +797,10 @@ export class RaceScene extends Phaser.Scene {
   private spawnTrackside(): void {
     for (let i = 0; i < this.track.fuelPickups; i++) this.spawnPickup('fuel');
     for (let i = 0; i < this.track.barrels; i++) this.spawnPickup('barrel');
+    if (this.shootingOn) {
+      for (let i = 0; i < 8; i++) this.spawnPickup('ammo');
+    }
+    for (let i = 0; i < 5; i++) this.spawnBomb();
 
     const defs: { kind: 'oil' | 'cone' | 'pothole'; count: number; texture: string; r: number }[] = [
       { kind: 'oil', count: this.track.hazards.oil, texture: 'oil', r: 34 },
@@ -771,7 +816,7 @@ export class RaceScene extends Phaser.Scene {
     }
   }
 
-  private spawnPickup(kind: 'fuel' | 'barrel', existing?: TrackPickup): void {
+  private spawnPickup(kind: 'fuel' | 'barrel' | 'ammo', existing?: TrackPickup): void {
     const pos = this.pointOnTrack(20);
     if (existing) {
       existing.x = pos.x;
@@ -780,11 +825,37 @@ export class RaceScene extends Phaser.Scene {
       existing.sprite.setPosition(pos.x, pos.y).setVisible(true);
       return;
     }
-    const sprite = this.add.image(pos.x, pos.y, kind === 'fuel' ? 'pickup-fuel' : 'pickup-barrel').setDepth(4);
+    const texture = kind === 'fuel' ? 'pickup-fuel' : kind === 'barrel' ? 'pickup-barrel' : 'pickup-ammo';
+    const sprite = this.add.image(pos.x, pos.y, texture).setDepth(4);
     if (kind === 'barrel') {
       this.tweens.add({ targets: sprite, scale: { from: 1, to: 1.15 }, yoyo: true, repeat: -1, duration: 550, ease: 'Sine.inOut' });
     }
     this.pickups.push({ kind, x: pos.x, y: pos.y, sprite, active: true, respawnAt: 0 });
+  }
+
+  private spawnBomb(existing?: Bomb): void {
+    const pos = this.pointOnTrack(35);
+    if (existing) {
+      existing.x = pos.x;
+      existing.y = pos.y;
+      existing.active = true;
+      existing.explodeAt = 0;
+      existing.sprite.setPosition(pos.x, pos.y).setVisible(true).setTint(0xffffff);
+      existing.ember.setPosition(pos.x + 19, pos.y - 24).setVisible(true);
+      return;
+    }
+    const sprite = this.add.image(pos.x, pos.y, 'bomb').setDepth(4);
+    // Burning fuse ember, pulsing.
+    const ember = this.add.image(pos.x + 19, pos.y - 24, 'dot').setTint(0xffd040).setDepth(5).setScale(0.9);
+    this.tweens.add({
+      targets: ember,
+      scale: { from: 0.6, to: 1.4 },
+      alpha: { from: 0.7, to: 1 },
+      yoyo: true,
+      repeat: -1,
+      duration: 180,
+    });
+    this.bombs.push({ x: pos.x, y: pos.y, sprite, ember, active: true, explodeAt: 0, respawnAt: 0 });
   }
 
   // ---------- Race flow ----------
@@ -950,6 +1021,12 @@ export class RaceScene extends Phaser.Scene {
             this.pickupsCollected++;
             sfx.scrapPickup();
           }
+        } else if (pickup.kind === 'ammo') {
+          entry.ammo = Math.min(3, entry.ammo + 1);
+          if (entry === this.player) {
+            this.pickupsCollected++;
+            sfx.scrapPickup();
+          }
         } else {
           car.applyOverdrive(3);
           car.fuel = Math.min(car.stats.tank, car.fuel + 8);
@@ -986,11 +1063,51 @@ export class RaceScene extends Phaser.Scene {
         }
       }
 
+      // Bombs: driving close lights the short fuse.
+      for (const bomb of this.bombs) {
+        if (!bomb.active || bomb.explodeAt > 0) continue;
+        const bdx = bomb.x - car.x;
+        const bdy = bomb.y - car.y;
+        if (bdx * bdx + bdy * bdy > 52 * 52) continue;
+        bomb.explodeAt = time + 650;
+        bomb.sprite.setTint(0xff6040);
+        this.tweens.add({ targets: bomb.sprite, scale: { from: 1, to: 1.3 }, yoyo: true, repeat: 3, duration: 80 });
+        if (entry === this.player) sfx.lowFuel();
+      }
+
+      // Bots with ammo take a shot when a rival lines up ahead.
+      if (this.shootingOn && racing && entry !== this.player && !entry.netId && entry.ammo > 0 && time - entry.lastFireAt > 2500) {
+        for (const other of this.racers) {
+          if (other === entry) continue;
+          const odx = other.car.x - car.x;
+          const ody = other.car.y - car.y;
+          const dist = Math.hypot(odx, ody);
+          if (dist > 560 || dist < 60) continue;
+          let aim = Math.atan2(ody, odx) - car.heading;
+          while (aim > Math.PI) aim -= Math.PI * 2;
+          while (aim < -Math.PI) aim += Math.PI * 2;
+          if (Math.abs(aim) < 0.28) {
+            this.fireFrom(entry, time);
+            break;
+          }
+        }
+      }
+
       // Out of fuel and stopped: player DNFs.
       if (entry === this.player && racing && car.fuel <= 0 && Math.abs(car.speed) < 8) {
         this.finishRace();
       }
     }
+
+    // Player fire input (F key or touch button).
+    if (this.shootingOn && racing && (this.fireQueued || touchControls.firePressed)) {
+      this.fireFrom(this.player, time);
+    }
+    this.fireQueued = false;
+    touchControls.firePressed = false;
+
+    this.updateFireballs(dt, time);
+    this.updateBombs(time);
 
     // Pickup respawns.
     for (const pickup of this.pickups) {
@@ -1024,6 +1141,17 @@ export class RaceScene extends Phaser.Scene {
             a.y -= ny * push * 2;
             a.speed *= 0.94;
           } else {
+            // Ramming: a hard enough shunt sends the victim into a spin.
+            const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+            if (rel > 260 && b.spinTimer <= 0) {
+              b.spinOut();
+              b.speed *= 0.7;
+              sfx.spin();
+            } else if (rel < -260 && a.spinTimer <= 0) {
+              a.spinOut();
+              a.speed *= 0.7;
+              sfx.spin();
+            }
             a.x -= nx * push;
             a.y -= ny * push;
             b.x += nx * push;
@@ -1073,6 +1201,109 @@ export class RaceScene extends Phaser.Scene {
       const g = this.ghostPlayer.at(this.raceTimeMs);
       this.ghostSprite.setPosition(g.x, g.y);
       (this.ghostSprite.list[0] as Phaser.GameObjects.Image).setRotation(g.heading);
+    }
+  }
+
+  // ---------- Weapons & bombs ----------
+
+  /** Fireball ammo count shown in the HUD. */
+  get playerAmmo(): number {
+    return this.player?.ammo ?? 0;
+  }
+
+  private fireFrom(entry: RacerEntry, time: number): void {
+    if (entry.ammo <= 0 || time - entry.lastFireAt < 450) return;
+    entry.ammo--;
+    entry.lastFireAt = time;
+    const car = entry.car;
+    const speed = Math.max(0, car.speed) + 560;
+    const sprite = this.add
+      .image(car.x, car.y, 'orb')
+      .setTint(0xff8a1f)
+      .setScale(1.25)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(12);
+    this.fireballs.push({
+      x: car.x + Math.cos(car.heading) * 34,
+      y: car.y + Math.sin(car.heading) * 34,
+      vx: Math.cos(car.heading) * speed,
+      vy: Math.sin(car.heading) * speed,
+      ownerId: car.id,
+      sprite,
+      expiresAt: time + 1300,
+    });
+    if (entry === this.player) sfx.boost();
+  }
+
+  private updateFireballs(dt: number, time: number): void {
+    for (let i = this.fireballs.length - 1; i >= 0; i--) {
+      const fb = this.fireballs[i];
+      fb.x += fb.vx * dt;
+      fb.y += fb.vy * dt;
+      fb.sprite.setPosition(fb.x, fb.y);
+
+      let hit = false;
+      // Hit a rival: fiery blast + spin pirouette, then they carry on.
+      for (const entry of this.racers) {
+        const car = entry.car;
+        if (car.id === fb.ownerId || entry.netId) continue;
+        const dx = car.x - fb.x;
+        const dy = car.y - fb.y;
+        if (dx * dx + dy * dy > 30 * 30) continue;
+        hit = true;
+        this.burstAt(fb.x, fb.y, 22, 0xff8a1f);
+        this.burstAt(fb.x, fb.y, 10, 0xff3b18);
+        sfx.explosion();
+        if (car.spinTimer <= 0) car.spinOut();
+        car.speed *= 0.55;
+        if (entry === this.player) this.cameras.main.shake(220, 0.008);
+        break;
+      }
+      // Solid scenery stops fireballs.
+      if (!hit) {
+        for (const p of this.props) {
+          const dx = p.x - fb.x;
+          const dy = p.y - fb.y;
+          if (dx * dx + dy * dy < p.r * p.r) {
+            hit = true;
+            this.burstAt(fb.x, fb.y, 10, 0xff8a1f);
+            break;
+          }
+        }
+      }
+      if (hit || time > fb.expiresAt) {
+        fb.sprite.destroy();
+        this.fireballs.splice(i, 1);
+      }
+    }
+  }
+
+  private updateBombs(time: number): void {
+    for (const bomb of this.bombs) {
+      if (!bomb.active) {
+        if (time >= bomb.respawnAt) this.spawnBomb(bomb);
+        continue;
+      }
+      if (bomb.explodeAt > 0 && time >= bomb.explodeAt) {
+        bomb.active = false;
+        bomb.respawnAt = time + 9000;
+        bomb.sprite.setVisible(false);
+        bomb.ember.setVisible(false);
+        this.burstAt(bomb.x, bomb.y, 30, 0xffb020);
+        this.burstAt(bomb.x, bomb.y, 16, 0xff3b18);
+        sfx.explosion();
+        // Blast wave: spin and slow anyone nearby.
+        for (const entry of this.racers) {
+          if (entry.netId) continue;
+          const car = entry.car;
+          const dx = car.x - bomb.x;
+          const dy = car.y - bomb.y;
+          if (dx * dx + dy * dy > 110 * 110) continue;
+          if (car.spinTimer <= 0) car.spinOut();
+          car.speed *= 0.4;
+          if (entry === this.player) this.cameras.main.shake(280, 0.01);
+        }
+      }
     }
   }
 

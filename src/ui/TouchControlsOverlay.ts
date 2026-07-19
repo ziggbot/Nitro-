@@ -18,11 +18,17 @@ export class TouchControlsOverlay {
   private boostY = 0;
   private boostR = 40;
   private boostCircle?: Phaser.GameObjects.Arc;
+  private fireX = 0;
+  private fireY = 0;
+  private fireR = 0;
+  private fireCircle?: Phaser.GameObjects.Arc;
 
   constructor(
     private scene: Phaser.Scene,
     /** Height reserved bottom-right (e.g. minimap) that boost sits above. */
     private bottomRightReserved = 0,
+    /** Adds a tap-to-fire button above boost (race mode with weapons on). */
+    private withFire = false,
   ) {}
 
   /** Returns true if controls were built (touch device). */
@@ -60,6 +66,20 @@ export class TouchControlsOverlay {
       .setOrigin(0.5)
       .setDepth(61);
 
+    if (this.withFire) {
+      this.fireR = Math.round(this.boostR * 0.8);
+      this.fireX = this.boostX;
+      this.fireY = this.boostY - this.boostR - this.fireR - 22;
+      this.fireCircle = scene.add
+        .circle(this.fireX, this.fireY, this.fireR, 0xffb31f, 0.28)
+        .setStrokeStyle(3, PALETTE.red, 0.9)
+        .setDepth(60);
+      scene.add
+        .text(this.fireX, this.fireY, '💥', { fontSize: `${Math.round(this.fireR * 0.9)}px` })
+        .setOrigin(0.5)
+        .setDepth(61);
+    }
+
     scene.input.on('pointerdown', this.onDown, this);
     scene.input.on('pointermove', this.onMove, this);
     scene.input.on('pointerup', this.onUp, this);
@@ -80,6 +100,15 @@ export class TouchControlsOverlay {
       this.joyId = p.id;
       this.updateKnob(p);
       return;
+    }
+    if (this.fireCircle) {
+      const dFire = Phaser.Math.Distance.Between(p.x, p.y, this.fireX, this.fireY);
+      if (dFire <= this.fireR * 1.4) {
+        touchControls.firePressed = true;
+        this.fireCircle.setFillStyle(0xffb31f, 0.65).setScale(0.9);
+        this.scene.tweens.add({ targets: this.fireCircle, scale: 1, duration: 180, onComplete: () => this.fireCircle?.setFillStyle(0xffb31f, 0.28) });
+        return;
+      }
     }
     const dBoost = Phaser.Math.Distance.Between(p.x, p.y, this.boostX, this.boostY);
     if (this.boostId < 0 && this.boostCircle && dBoost <= this.boostR * 1.7) {
