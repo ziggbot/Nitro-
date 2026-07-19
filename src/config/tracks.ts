@@ -15,6 +15,12 @@ export interface TrackDef {
   fuelPickups: number;
   barrels: number;
   hazards: { oil: number; cones: number; potholes: number };
+  /**
+   * Risky narrow cuts between two control points (indices): skip the main
+   * road's detour, but thread a tight dirt path. `bulge` bows the cut
+   * sideways (px, += left of travel).
+   */
+  shortcuts?: { from: number; to: number; bulge?: number }[];
 }
 
 export const TRACKS: TrackDef[] = [
@@ -47,6 +53,8 @@ export const TRACKS: TrackDef[] = [
       { x: 600, y: 2750 },
       { x: 600, y: 1550 },
     ],
+    // Alley cut straight past the bus stop.
+    shortcuts: [{ from: 7, to: 9, bulge: 60 }],
   },
   {
     id: 'forest-gp',
@@ -79,6 +87,8 @@ export const TRACKS: TrackDef[] = [
       { x: 1100, y: 2200 },
       { x: 500, y: 1450 },
     ],
+    // Fire road that skips the middle hairpin.
+    shortcuts: [{ from: 4, to: 6, bulge: -70 }],
   },
   {
     id: 'desert-gp',
@@ -107,6 +117,8 @@ export const TRACKS: TrackDef[] = [
       { x: 500, y: 2400 },
       { x: 800, y: 1600 },
     ],
+    // Wadi cut across the canyon S-bend.
+    shortcuts: [{ from: 4, to: 6, bulge: -90 }],
   },
   {
     id: 'wasteland-gp',
@@ -139,6 +151,40 @@ export const TRACKS: TrackDef[] = [
       { x: 1150, y: 2250 },
       { x: 500, y: 1500 },
     ],
+    // Sludge causeway past one switchback.
+    shortcuts: [{ from: 4, to: 6, bulge: -70 }],
+  },
+  {
+    id: 'crossover-gp',
+    name: 'Neon Crossover GP',
+    envId: 'city',
+    size: 4200,
+    laps: 3,
+    botCount: 5,
+    daylight: false,
+    roadWidth: 165,
+    rewardMult: 1.8,
+    fuelPickups: 9,
+    barrels: 3,
+    hazards: { oil: 5, cones: 6, potholes: 5 },
+    // Night-city figure-8: the return leg bridges OVER the outbound dive
+    // through the center — the game's only two-level crossing.
+    controlPoints: [
+      { x: 1200, y: 700 },
+      { x: 2400, y: 550 },
+      { x: 3300, y: 900 },
+      { x: 3500, y: 1600 },
+      { x: 2500, y: 1900 },
+      { x: 1600, y: 2500 },
+      { x: 900, y: 3000 },
+      { x: 1300, y: 3650 },
+      { x: 2400, y: 3700 },
+      { x: 3200, y: 3300 },
+      { x: 3300, y: 2700 },
+      { x: 2600, y: 2400 },
+      { x: 1700, y: 1800 },
+      { x: 900, y: 1500 },
+    ],
   },
 ];
 
@@ -149,4 +195,9 @@ export function trackById(id: string): TrackDef {
 /** The race track matching an arena environment (menu RACE button). */
 export function trackForEnv(envId: string): TrackDef {
   return TRACKS.find((t) => t.envId === envId) ?? TRACKS[0];
+}
+
+/** Arena-aware track pick: an arena can pin a specific track (night city → crossover). */
+export function trackForArena(arena: { envId: string; trackId?: string }): TrackDef {
+  return arena.trackId ? trackById(arena.trackId) : trackForEnv(arena.envId);
 }

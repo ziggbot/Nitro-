@@ -73,6 +73,45 @@ export function nearestIndex(path: RacePath, x: number, y: number, lastIdx: numb
   return best;
 }
 
+/** A spot where the track crosses itself: the later section bridges over. */
+export interface Crossing {
+  x: number;
+  y: number;
+  /** Sample index of the earlier (under) pass. */
+  underIdx: number;
+  /** Sample index of the later (over/bridge) pass. */
+  overIdx: number;
+}
+
+/**
+ * Find self-crossings of the centerline (figure-8 tracks). Two samples far
+ * apart along the loop but nearly touching in space mark a crossing; the
+ * closest such pair per cluster is returned.
+ */
+export function findCrossings(path: RacePath, roadWidth: number, minIndexGap = 30): Crossing[] {
+  const pts = path.pts;
+  const n = pts.length;
+  const found: (Crossing & { d: number })[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + minIndexGap; j < n; j++) {
+      if (Math.min(j - i, n - (j - i)) < minIndexGap) continue;
+      const dx = pts[i].x - pts[j].x;
+      const dy = pts[i].y - pts[j].y;
+      const d = Math.hypot(dx, dy);
+      if (d > roadWidth * 0.6) continue;
+      const cx = (pts[i].x + pts[j].x) / 2;
+      const cy = (pts[i].y + pts[j].y) / 2;
+      const cluster = found.find((c) => Math.hypot(c.x - cx, c.y - cy) < roadWidth * 2.5);
+      if (!cluster) {
+        found.push({ x: cx, y: cy, underIdx: i, overIdx: j, d });
+      } else if (d < cluster.d) {
+        Object.assign(cluster, { x: cx, y: cy, underIdx: i, overIdx: j, d });
+      }
+    }
+  }
+  return found.map(({ d: _d, ...c }) => c);
+}
+
 /** Tracks lap count + total progress for one car. */
 export class LapTracker {
   idx: number;

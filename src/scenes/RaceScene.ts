@@ -7,7 +7,7 @@ import { botNames } from '../ai/names';
 import { RaceBotDriver } from '../ai/RaceBotDriver';
 import { CarSim } from '../game/CarSim';
 import { PlayerDriver } from '../game/PlayerDriver';
-import { buildPath, LapTracker, type RacePath } from '../game/racePath';
+import { buildPath, findCrossings, LapTracker, type Crossing, type RacePath } from '../game/racePath';
 import { sfx } from '../game/sfx';
 import { music } from '../game/music';
 import { loadSave, type SaveData } from '../meta/SaveGame';
@@ -21,6 +21,8 @@ import type { NetRoom, NetPlayer, StateMsg } from '../net/room';
 interface RacerView {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
+  /** Ground shadow, shown separated from the car during ramp jumps. */
+  shadow: Phaser.GameObjects.Image;
   label: Phaser.GameObjects.Text;
   flames: ExhaustFx;
 }
@@ -72,6 +74,8 @@ interface Fireball {
   vx: number;
   vy: number;
   ownerId: number;
+  /** Fired from the bridge deck? Shots don't cross levels. */
+  onBridge: boolean;
   sprite: Phaser.GameObjects.Image;
   expiresAt: number;
 }
@@ -120,6 +124,16 @@ export class RaceScene extends Phaser.Scene {
   private bombs: Bomb[] = [];
   private fireballs: Fireball[] = [];
   private fireQueued = false;
+
+  // Track features: boost pads, jump ramps, shortcuts, bridge crossings.
+  private pads: { x: number; y: number; angle: number }[] = [];
+  private ramps: { x: number; y: number; angle: number }[] = [];
+  /** Sampled shortcut centerlines (narrow risky cuts off the main road). */
+  private shortcutLines: { x: number; y: number }[][] = [];
+  private shortcutHalf = 52;
+  private crossings: Crossing[] = [];
+  /** Index half-width of a bridge zone in path samples. */
+  private crossingSpan = 9;
 
   // Wasteland blackouts: pitch black except headlights, exhaust, outline.
   private blackoutWindows: { start: number; end: number }[] = [];
@@ -177,6 +191,11 @@ export class RaceScene extends Phaser.Scene {
     this.bombs = [];
     this.fireballs = [];
     this.fireQueued = false;
+    this.pads = [];
+    this.ramps = [];
+    // Computed here (pure math) so scenery placement can steer clear.
+    this.shortcutLines = (this.track.shortcuts ?? []).map((def) => this.shortcutSamples(def));
+    this.crossings = findCrossings(this.path, this.track.roadWidth);
     // Weapons: front-page toggle; off in network races (not synced yet).
     this.shootingOn = this.save.shootingEnabled && !data.network;
   }
@@ -195,7 +214,10 @@ export class RaceScene extends Phaser.Scene {
       this.add.tileSprite(size / 2, size / 2, size, size, `floor-${this.track.envId}`).setAlpha(0.55);
     }
     this.drawScenery();
+    this.drawShortcuts();
     this.drawTrack();
+    this.placePadsAndRamps();
+    this.drawBridges();
     this.spawnTrackside();
 
     // Grid: staggered two-wide slots walked back along the centerline, so
@@ -280,6 +302,7 @@ export class RaceScene extends Phaser.Scene {
       car.spawnAt(gx, gy, gridAngle);
 
       const sprite = this.add.image(0, 0, fuel.texture).setScale(CAR_SCALE).setTint(fuel.color);
+      const shadow = this.add.image(0, 0, fuel.texture).setScale(CAR_SCALE).setTintFill(0x000000).setAlpha(0).setVisible(false);
       const label = this.add
         .text(0, -46, spec.kind === 'player' ? 'YOU' : spec.name, {
           fontFamily: '"Segoe UI", Arial, sans-serif',
@@ -289,14 +312,14 @@ export class RaceScene extends Phaser.Scene {
           strokeThickness: 3,
         })
         .setOrigin(0.5);
-      const container = this.add.container(gx, gy, [sprite, label]).setDepth(10);
+      const container = this.add.container(gx, gy, [shadow, sprite, label]).setDepth(10);
       const flames = new ExhaustFx(this, car, fuel);
 
       const entry: RacerEntry = {
         car,
         driver,
         tracker: new LapTracker(this.path, startIdx),
-        view: { container, sprite, label, flames },
+        view: { container, sprite, shadow, label, flames },
         finished: false,
         finishTime: 0,
         ammo: this.shootingOn ? 1 : 0,
@@ -448,6 +471,7 @@ export class RaceScene extends Phaser.Scene {
   private drawScenery(): void {
     if (!this.track.daylight) {
       if (this.track.envId === 'wasteland') this.drawWastelandScenery();
+      if (this.track.envId === 'city') this.drawNightCityScenery();
       return;
     }
     if (this.track.envId === 'forest') {
@@ -462,16 +486,7 @@ export class RaceScene extends Phaser.Scene {
     const roadHalf = this.track.roadWidth / 2;
     const pts = this.path.pts;
 
-    const minDistToRoad = (x: number, y: number): number => {
-      let best = Infinity;
-      for (let i = 0; i < pts.length; i += 2) {
-        const dx = pts[i].x - x;
-        const dy = pts[i].y - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < best) best = d2;
-      }
-      return Math.sqrt(best);
-    };
+    const minDistToRoad = (x: number, y: number): number => this.minDistToTrack(x, y);
     const nearestRoadPoint = (x: number, y: number): { x: number; y: number } => {
       let best = pts[0];
       let bestD2 = Infinity;
@@ -573,16 +588,7 @@ export class RaceScene extends Phaser.Scene {
     const size = this.track.size;
     const roadHalf = this.track.roadWidth / 2;
     const pts = this.path.pts;
-    const minDistToRoad = (x: number, y: number): number => {
-      let best = Infinity;
-      for (let i = 0; i < pts.length; i += 2) {
-        const dx = pts[i].x - x;
-        const dy = pts[i].y - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < best) best = d2;
-      }
-      return Math.sqrt(best);
-    };
+    const minDistToRoad = (x: number, y: number): number => this.minDistToTrack(x, y);
 
     const g = this.add.graphics().setDepth(0.5);
     const placed: { x: number; y: number; r: number }[] = [];
@@ -619,6 +625,49 @@ export class RaceScene extends Phaser.Scene {
       const scale = 0.9 + this.rand() * 0.4;
       this.add.image(ox, oy, 'crate').setDepth(0.7).setRotation(this.rand() * Math.PI).setScale(scale);
       this.props.push({ x: ox, y: oy, r: 15 * scale });
+    }
+  }
+
+  /** Synthwave city blocks: dark rooftops rimmed in neon (solid). */
+  private drawNightCityScenery(): void {
+    const size = this.track.size;
+    const roadHalf = this.track.roadWidth / 2;
+    const minDistToRoad = (x: number, y: number): number => this.minDistToTrack(x, y);
+
+    const g = this.add.graphics().setDepth(0.5);
+    const placed: { x: number; y: number; r: number }[] = [];
+    const neon = [0xff3b9e, 0x19c8ff, 0x9d5cff];
+    let blocks = 0;
+    for (let tries = 0; tries < 700 && blocks < 40; tries++) {
+      const bw = 180 + this.rand() * 220;
+      const bh = 180 + this.rand() * 220;
+      const x = 120 + this.rand() * (size - 240 - bw);
+      const y = 120 + this.rand() * (size - 240 - bh);
+      const cx = x + bw / 2;
+      const cy = y + bh / 2;
+      const halfDiag = Math.hypot(bw, bh) / 2;
+      const roadDist = minDistToRoad(cx, cy);
+      if (roadDist < roadHalf + halfDiag * 0.82 + 26) continue;
+      if (roadDist > 1400 && this.rand() < 0.6) continue;
+      if (placed.some((p) => Math.hypot(p.x - cx, p.y - cy) < (p.r + halfDiag) * 0.85)) continue;
+      placed.push({ x: cx, y: cy, r: halfDiag });
+      this.buildings.push({ x, y, w: bw, h: bh });
+      blocks++;
+
+      const rim = neon[Math.floor(this.rand() * neon.length)];
+      g.fillStyle(0x07070f, 0.9).fillRect(x, y, bw, bh);
+      g.lineStyle(3, rim, 0.85).strokeRect(x, y, bw, bh);
+      g.lineStyle(8, rim, 0.12).strokeRect(x - 4, y - 4, bw + 8, bh + 8); // glow halo
+      // A few lit windows.
+      g.fillStyle(rim, 0.35);
+      const cols = Math.max(2, Math.floor(bw / 90));
+      const rows = Math.max(2, Math.floor(bh / 90));
+      for (let wx = 0; wx < cols; wx++) {
+        for (let wy = 0; wy < rows; wy++) {
+          if (this.rand() < 0.55) continue;
+          g.fillRect(x + 24 + wx * ((bw - 48) / cols), y + 24 + wy * ((bh - 48) / rows), 16, 16);
+        }
+      }
     }
   }
 
@@ -673,17 +722,7 @@ export class RaceScene extends Phaser.Scene {
   private drawWastelandScenery(): void {
     const size = this.track.size;
     const roadHalf = this.track.roadWidth / 2;
-    const pts = this.path.pts;
-    const minDistToRoad = (x: number, y: number): number => {
-      let best = Infinity;
-      for (let i = 0; i < pts.length; i += 2) {
-        const dx = pts[i].x - x;
-        const dy = pts[i].y - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < best) best = d2;
-      }
-      return Math.sqrt(best);
-    };
+    const minDistToRoad = (x: number, y: number): number => this.minDistToTrack(x, y);
 
     const g = this.add.graphics().setDepth(0.5);
     const placed: { x: number; y: number; r: number }[] = [];
@@ -727,17 +766,7 @@ export class RaceScene extends Phaser.Scene {
   private drawDesertScenery(): void {
     const size = this.track.size;
     const roadHalf = this.track.roadWidth / 2;
-    const pts = this.path.pts;
-    const minDistToRoad = (x: number, y: number): number => {
-      let best = Infinity;
-      for (let i = 0; i < pts.length; i += 2) {
-        const dx = pts[i].x - x;
-        const dy = pts[i].y - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < best) best = d2;
-      }
-      return Math.sqrt(best);
-    };
+    const minDistToRoad = (x: number, y: number): number => this.minDistToTrack(x, y);
 
     const g = this.add.graphics().setDepth(0.5);
     const placed: { x: number; y: number; r: number }[] = [];
@@ -847,7 +876,12 @@ export class RaceScene extends Phaser.Scene {
   }
 
   private spawnBomb(existing?: Bomb): void {
-    const pos = this.pointOnTrack(35);
+    let pos = this.pointOnTrack(35);
+    // Keep bombs away from bridge crossings — a fuse lit through the deck
+    // from the other level would feel like a cheap shot.
+    for (let tries = 0; tries < 8 && this.crossings.some((c) => Math.hypot(c.x - pos.x, c.y - pos.y) < this.track.roadWidth * 2); tries++) {
+      pos = this.pointOnTrack(35);
+    }
     if (existing) {
       existing.x = pos.x;
       existing.y = pos.y;
@@ -869,6 +903,202 @@ export class RaceScene extends Phaser.Scene {
       duration: 180,
     });
     this.bombs.push({ x: pos.x, y: pos.y, sprite, ember, active: true, explodeAt: 0, respawnAt: 0 });
+  }
+
+  // ---------- Track features: shortcuts, pads, ramps, bridges ----------
+
+  /** Sample a shortcut's centerline as a shallow quadratic arc. */
+  private shortcutSamples(def: { from: number; to: number; bulge?: number }): { x: number; y: number }[] {
+    const spacing = 18; // samples per control segment in buildPath
+    const a = this.path.pts[(def.from * spacing) % this.path.pts.length];
+    const b = this.path.pts[(def.to * spacing) % this.path.pts.length];
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const px = -(b.y - a.y) / len;
+    const py = (b.x - a.x) / len;
+    const bulge = def.bulge ?? 0;
+    const cx = mx + px * bulge;
+    const cy = my + py * bulge;
+    const out: { x: number; y: number }[] = [];
+    for (let i = 0; i <= 26; i++) {
+      const t = i / 26;
+      const u = 1 - t;
+      out.push({ x: u * u * a.x + 2 * u * t * cx + t * t * b.x, y: u * u * a.y + 2 * u * t * cy + t * t * b.y });
+    }
+    return out;
+  }
+
+  /** Narrow risky dirt cuts drawn beneath the main road. */
+  private drawShortcuts(): void {
+    for (const line of this.shortcutLines) {
+      const g = this.add.graphics().setDepth(0.85);
+      const day = this.track.daylight;
+      const surface = day ? (this.track.envId === 'desert' ? 0x9a8050 : 0x7a6a48) : 0x101018;
+      const edge = day ? 0x4a4034 : 0x3a3a6c;
+      g.lineStyle(this.shortcutHalf * 2 + 10, edge, day ? 0.55 : 0.8);
+      this.strokePolyline(g, line);
+      g.lineStyle(this.shortcutHalf * 2, surface, 1);
+      this.strokePolyline(g, line);
+      // Dashed hints so the entrance reads as a path, not a glitch.
+      g.lineStyle(4, day ? 0xd8c890 : 0x5c5c8c, 0.8);
+      for (let i = 2; i < line.length - 3; i += 4) {
+        g.lineBetween(line[i].x, line[i].y, line[i + 2].x, line[i + 2].y);
+      }
+    }
+  }
+
+  private strokePolyline(g: Phaser.GameObjects.Graphics, line: { x: number; y: number }[]): void {
+    g.beginPath();
+    g.moveTo(line[0].x, line[0].y);
+    for (let i = 1; i < line.length; i++) g.lineTo(line[i].x, line[i].y);
+    g.strokePath();
+  }
+
+  /**
+   * Distance to the nearest drivable surface (main road OR shortcut) —
+   * scenery placement keeps this clear so cuts are never walled off.
+   * Shortcut distance is padded up so road-width clearance thresholds
+   * apply to the narrower cut too.
+   */
+  private minDistToTrack(x: number, y: number): number {
+    const pts = this.path.pts;
+    let best = Infinity;
+    for (let i = 0; i < pts.length; i += 2) {
+      const dx = pts[i].x - x;
+      const dy = pts[i].y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < best) best = d2;
+    }
+    let d = Math.sqrt(best);
+    if (this.shortcutLines.length > 0) {
+      const pad = Math.max(0, this.track.roadWidth / 2 - this.shortcutHalf);
+      d = Math.min(d, this.distToShortcut(x, y) + pad);
+    }
+    return d;
+  }
+
+  /** Distance from a point to the nearest shortcut centerline sample. */
+  private distToShortcut(x: number, y: number): number {
+    let best = Infinity;
+    for (const line of this.shortcutLines) {
+      for (const p of line) {
+        const d2 = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+        if (d2 < best) best = d2;
+      }
+    }
+    return Math.sqrt(best);
+  }
+
+  /**
+   * Deterministically place boost pads and jump ramps on straights (same
+   * result on every client — no RNG involved).
+   */
+  private placePadsAndRamps(): void {
+    const pts = this.path.pts;
+    const n = pts.length;
+    const tangentAt = (i: number): number => {
+      const a = pts[(i - 2 + n) % n];
+      const b = pts[(i + 2) % n];
+      return Math.atan2(b.y - a.y, b.x - a.x);
+    };
+    const bendOver = (i: number, span: number): number => {
+      let worst = 0;
+      for (let k = 0; k <= span; k += 2) {
+        let d = tangentAt((i + k) % n) - tangentAt(i);
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        worst = Math.max(worst, Math.abs(d));
+      }
+      return worst;
+    };
+    // Rank every sample by straightness and take the best spots — adaptive,
+    // so even twisty tracks get their features on their straightest bits.
+    const taken: number[] = [];
+    const farFromTaken = (i: number, gap: number): boolean => taken.every((t) => Math.min(Math.abs(i - t), n - Math.abs(i - t)) > gap);
+    const nearBridge = (i: number): boolean =>
+      this.crossings.some(
+        (c) =>
+          Math.min(Math.abs(i - c.overIdx), n - Math.abs(i - c.overIdx)) < this.crossingSpan + 10 ||
+          Math.min(Math.abs(i - c.underIdx), n - Math.abs(i - c.underIdx)) < this.crossingSpan + 10,
+      );
+    const scored: { i: number; bend: number; landing: number }[] = [];
+    for (let i = 20; i < n - 8; i += 2) {
+      if (nearBridge(i)) continue;
+      scored.push({ i, bend: bendOver(i, 12), landing: bendOver(i, 24) });
+    }
+
+    // Two ramps where the landing run is straightest.
+    for (const c of [...scored].sort((a, b) => a.landing - b.landing)) {
+      if (this.ramps.length >= 2) break;
+      if (!farFromTaken(c.i, 40) || c.landing > 0.55) continue;
+      const angle = tangentAt(c.i);
+      this.ramps.push({ x: pts[c.i].x, y: pts[c.i].y, angle });
+      this.add.image(pts[c.i].x, pts[c.i].y, 'ramp').setRotation(angle).setDepth(2.5);
+      taken.push(c.i);
+    }
+    // Four boost pads on the next-straightest spots.
+    for (const c of [...scored].sort((a, b) => a.bend - b.bend)) {
+      if (this.pads.length >= 4) break;
+      if (!farFromTaken(c.i, 30) || c.bend > 0.6) continue;
+      const angle = tangentAt(c.i);
+      this.pads.push({ x: pts[c.i].x, y: pts[c.i].y, angle });
+      const img = this.add.image(pts[c.i].x, pts[c.i].y, 'pad-boost').setRotation(angle).setDepth(2.5);
+      this.tweens.add({ targets: img, alpha: { from: 1, to: 0.55 }, yoyo: true, repeat: -1, duration: 420 });
+      taken.push(c.i);
+    }
+  }
+
+  /** Which level an on-track sample index is on near a crossing: 1 = bridge, 0 = under, -1 = away. */
+  private levelAtIdx(idx: number): number {
+    const n = this.path.pts.length;
+    for (const c of this.crossings) {
+      if (Math.min(Math.abs(idx - c.overIdx), n - Math.abs(idx - c.overIdx)) <= this.crossingSpan) return 1;
+      if (Math.min(Math.abs(idx - c.underIdx), n - Math.abs(idx - c.underIdx)) <= this.crossingSpan) return 0;
+    }
+    return -1;
+  }
+
+  /** True when the two racers are on different bridge levels (no contact). */
+  private separatedByBridge(a: RacerEntry, b: RacerEntry): boolean {
+    if (!this.crossings.length) return false;
+    return (this.levelAtIdx(a.tracker.idx) === 1) !== (this.levelAtIdx(b.tracker.idx) === 1);
+  }
+
+  /** Redraw the "over" section of each crossing as an elevated bridge deck. */
+  private drawBridges(): void {
+    const pts = this.path.pts;
+    const n = pts.length;
+    const w = this.track.roadWidth;
+    for (const c of this.crossings) {
+      const seg: { x: number; y: number }[] = [];
+      for (let k = -this.crossingSpan; k <= this.crossingSpan; k++) seg.push(pts[(c.overIdx + k + n) % n]);
+      // Ground shadow under the deck.
+      const shadow = this.add.graphics().setDepth(10.5);
+      shadow.lineStyle(w + 30, 0x000000, 0.35);
+      this.strokePolyline(
+        shadow,
+        seg.map((p) => ({ x: p.x + 7, y: p.y + 9 })),
+      );
+      // Deck + neon rails above car depth (cars beneath drive under it).
+      const deck = this.add.graphics().setDepth(11);
+      deck.lineStyle(w + 14, 0x05050d, 1);
+      this.strokePolyline(deck, seg);
+      deck.lineStyle(w, 0x1a1a26, 1);
+      this.strokePolyline(deck, seg);
+      deck.lineStyle(4, 0xe8e8ec, 0.5);
+      this.strokePolyline(deck, seg);
+      const rails = this.add.graphics().setDepth(11.2);
+      for (const side of [-1, 1]) {
+        const rail = seg.map((p, i) => {
+          const j = Math.min(seg.length - 2, i);
+          const t = Math.atan2(seg[j + 1].y - seg[j].y, seg[j + 1].x - seg[j].x);
+          return { x: p.x + Math.cos(t + Math.PI / 2) * (w / 2 + 6) * side, y: p.y + Math.sin(t + Math.PI / 2) * (w / 2 + 6) * side };
+        });
+        rails.lineStyle(5, 0xff3b9e, 0.95);
+        this.strokePolyline(rails, rail);
+      }
+    }
   }
 
   // ---------- Race flow ----------
@@ -987,7 +1217,8 @@ export class RaceScene extends Phaser.Scene {
       if (car.boosting && !wasBoosting && entry === this.player) sfx.boost();
 
       // Buildings and roadside props are solid — crash and bounce.
-      this.collideScenery(car, time, entry === this.player);
+      // Airborne cars sail clean over everything on the ground.
+      if (car.airTimer <= 0) this.collideScenery(car, time, entry === this.player);
 
       // Lap/progress tracking.
       if (racing) {
@@ -1006,22 +1237,52 @@ export class RaceScene extends Phaser.Scene {
         }
       }
 
-      // Off-road: heavy slowdown outside the asphalt.
+      // Off-road: heavy slowdown outside the asphalt — unless the car is
+      // threading a shortcut or flying off a ramp.
       const centerDist = entry.tracker.distToCenter(car.x, car.y);
-      const onRoad = centerDist < this.track.roadWidth / 2 + 14;
+      const onRoad =
+        centerDist < this.track.roadWidth / 2 + 14 ||
+        car.airTimer > 0 ||
+        (this.shortcutLines.length > 0 && this.distToShortcut(car.x, car.y) < this.shortcutHalf + 8);
       if (!onRoad) {
         car.slowTimer = Math.max(car.slowTimer, 0.15);
         if (entry === this.player && !this.offRoad) sfx.bump();
       }
       if (entry === this.player) this.offRoad = !onRoad;
 
+      // Boost pads and jump ramps (grounded cars only).
+      if (car.airTimer <= 0 && racing) {
+        for (const pad of this.pads) {
+          const pdx = pad.x - car.x;
+          const pdy = pad.y - car.y;
+          if (pdx * pdx + pdy * pdy > 50 * 50) continue;
+          if (car.overdriveTimer <= 0) {
+            this.burstAt(pad.x, pad.y, 10, 0x19c8ff);
+            if (entry === this.player) sfx.powerup();
+          }
+          car.applyOverdrive(1.4);
+        }
+        for (const ramp of this.ramps) {
+          const rdx = ramp.x - car.x;
+          const rdy = ramp.y - car.y;
+          if (rdx * rdx + rdy * rdy > 46 * 46) continue;
+          const along = Math.cos(car.heading - ramp.angle);
+          if (along < 0.5 || Math.abs(car.speed) < 170 || car.spinTimer > 0) continue;
+          car.launch(0.38 + Math.abs(car.speed) / 1400);
+          if (entry === this.player) {
+            sfx.boost();
+            this.cameras.main.shake(80, 0.003);
+          }
+        }
+      }
+
       // World bounds safety.
       car.x = Phaser.Math.Clamp(car.x, 30, this.track.size - 30);
       car.y = Phaser.Math.Clamp(car.y, 30, this.track.size - 30);
 
-      // Pickups.
+      // Pickups (not while airborne — you fly right over them).
       for (const pickup of this.pickups) {
-        if (!pickup.active) continue;
+        if (!pickup.active || car.airTimer > 0) continue;
         const dx = pickup.x - car.x;
         const dy = pickup.y - car.y;
         if (dx * dx + dy * dy > 44 * 44) continue;
@@ -1051,8 +1312,9 @@ export class RaceScene extends Phaser.Scene {
         }
       }
 
-      // Hazards.
+      // Hazards (airborne cars clear them).
       for (const h of this.hazards) {
+        if (car.airTimer > 0) break;
         const dx = h.x - car.x;
         const dy = h.y - car.y;
         const rr = (h.r + CAR_RADIUS * 0.6) * (h.r + CAR_RADIUS * 0.6);
@@ -1076,9 +1338,9 @@ export class RaceScene extends Phaser.Scene {
         }
       }
 
-      // Bombs: driving close lights the short fuse.
+      // Bombs: driving close lights the short fuse (not from mid-air).
       for (const bomb of this.bombs) {
-        if (!bomb.active || bomb.explodeAt > 0) continue;
+        if (!bomb.active || bomb.explodeAt > 0 || car.airTimer > 0) continue;
         const bdx = bomb.x - car.x;
         const bdy = bomb.y - car.y;
         if (bdx * bdx + bdy * bdy > 52 * 52) continue;
@@ -1135,7 +1397,10 @@ export class RaceScene extends Phaser.Scene {
       for (let j = i + 1; j < this.racers.length; j++) {
         const bRemote = !!this.racers[j].netId;
         if (aRemote && bRemote) continue;
+        // No contact across bridge levels or with an airborne car.
+        if (this.separatedByBridge(this.racers[i], this.racers[j])) continue;
         const b = this.racers[j].car;
+        if (a.airTimer > 0 || b.airTimer > 0) continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d2 = dx * dx + dy * dy;
@@ -1181,7 +1446,24 @@ export class RaceScene extends Phaser.Scene {
       const car = entry.car;
       entry.view.container.setPosition(car.x, car.y);
       entry.view.sprite.setRotation(car.heading);
-      entry.view.sprite.setScale(CAR_SCALE * (car.boosting || car.overdriveTimer > 0 ? 1.08 : 1));
+      // Ramp jumps: the car swells along a sine arc while its shadow stays
+      // grounded and slides away — reads as height in pure top-down.
+      const hop = car.airTimer > 0 && car.airTotal > 0 ? Math.sin(Math.min(1, 1 - car.airTimer / car.airTotal) * Math.PI) : 0;
+      entry.view.sprite.setScale(CAR_SCALE * (car.boosting || car.overdriveTimer > 0 ? 1.08 : 1) * (1 + hop * 0.42));
+      if (hop > 0) {
+        entry.view.shadow
+          .setVisible(true)
+          .setAlpha(0.3)
+          .setRotation(car.heading)
+          .setScale(CAR_SCALE * (1 - hop * 0.12))
+          .setPosition(hop * 16, hop * 24);
+      } else if (entry.view.shadow.visible) {
+        entry.view.shadow.setVisible(false).setPosition(0, 0);
+      }
+      // Bridge decks render above ground cars; whoever is on the deck (or
+      // mid-jump) must render above the deck in turn.
+      const elevated = car.airTimer > 0 || (this.crossings.length > 0 && this.levelAtIdx(entry.tracker.idx) === 1);
+      entry.view.container.setDepth(elevated ? 11.5 : 10);
       entry.view.flames.update(car, 44 * CAR_SCALE);
     }
     const pc = this.player.car;
@@ -1242,6 +1524,7 @@ export class RaceScene extends Phaser.Scene {
       vx: Math.cos(car.heading) * speed,
       vy: Math.sin(car.heading) * speed,
       ownerId: car.id,
+      onBridge: this.crossings.length > 0 && this.levelAtIdx(entry.tracker.idx) === 1,
       sprite,
       expiresAt: time + 1300,
     });
@@ -1257,9 +1540,11 @@ export class RaceScene extends Phaser.Scene {
 
       let hit = false;
       // Hit a rival: fiery blast + spin pirouette, then they carry on.
+      // Shots stay on their own bridge level and sail under jumping cars.
       for (const entry of this.racers) {
         const car = entry.car;
-        if (car.id === fb.ownerId || entry.netId) continue;
+        if (car.id === fb.ownerId || entry.netId || car.airTimer > 0) continue;
+        if (this.crossings.length > 0 && (this.levelAtIdx(entry.tracker.idx) === 1) !== fb.onBridge) continue;
         const dx = car.x - fb.x;
         const dy = car.y - fb.y;
         if (dx * dx + dy * dy > 30 * 30) continue;
@@ -1305,9 +1590,9 @@ export class RaceScene extends Phaser.Scene {
         this.burstAt(bomb.x, bomb.y, 30, 0xffb020);
         this.burstAt(bomb.x, bomb.y, 16, 0xff3b18);
         sfx.explosion();
-        // Blast wave: spin and slow anyone nearby.
+        // Blast wave: spin and slow anyone nearby (jumpers clear it).
         for (const entry of this.racers) {
-          if (entry.netId) continue;
+          if (entry.netId || entry.car.airTimer > 0) continue;
           const car = entry.car;
           const dx = car.x - bomb.x;
           const dy = car.y - bomb.y;

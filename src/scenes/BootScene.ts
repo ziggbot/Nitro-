@@ -37,6 +37,8 @@ export class BootScene extends Phaser.Scene {
     this.makeBarrel();
     this.makeBomb();
     this.makeAmmo();
+    this.makeBoostPad();
+    this.makeRamp();
     this.makeWheel();
     this.makeKnob();
     this.makeDaylightCobbles();
@@ -312,6 +314,62 @@ export class BootScene extends Phaser.Scene {
       ctx.beginPath();
       ctx.arc(30, 29, 12, 0, Math.PI * 2);
       ctx.fill();
+    });
+  }
+
+  /** Boost pad: dark slab with cyan chevrons, drawn pointing +x. */
+  private makeBoostPad(): void {
+    this.canvasTexture('pad-boost', 96, 64, (ctx) => {
+      ctx.fillStyle = 'rgba(10,16,30,0.85)';
+      ctx.beginPath();
+      ctx.roundRect(4, 6, 88, 52, 10);
+      ctx.fill();
+      ctx.strokeStyle = '#19c8ff';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      // Two forward chevrons.
+      ctx.strokeStyle = '#7fe8ff';
+      ctx.lineWidth = 8;
+      ctx.lineJoin = 'round';
+      for (const ox of [18, 48]) {
+        ctx.beginPath();
+        ctx.moveTo(ox, 16);
+        ctx.lineTo(ox + 22, 32);
+        ctx.lineTo(ox, 48);
+        ctx.stroke();
+      }
+    });
+  }
+
+  /** Jump ramp: yellow/black hazard base rising to a bright lip, +x facing. */
+  private makeRamp(): void {
+    this.canvasTexture('ramp', 104, 76, (ctx) => {
+      // Incline body.
+      const g = ctx.createLinearGradient(6, 0, 98, 0);
+      g.addColorStop(0, '#4c5058');
+      g.addColorStop(0.75, '#8a8e98');
+      g.addColorStop(1, '#c8ccd6');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.roundRect(6, 8, 92, 60, 6);
+      ctx.fill();
+      // Hazard stripes across the low edge.
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#ffc81e' : '#16181e';
+        ctx.fillRect(6, 8 + i * 12, 14, 12);
+      }
+      // Bright launch lip.
+      ctx.fillStyle = '#f2f4fa';
+      ctx.fillRect(92, 8, 6, 60);
+      // Up arrow.
+      ctx.strokeStyle = '#16181e';
+      ctx.lineWidth = 7;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(40, 22);
+      ctx.lineTo(72, 38);
+      ctx.lineTo(40, 54);
+      ctx.stroke();
     });
   }
 

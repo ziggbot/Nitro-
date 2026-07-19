@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPath, LapTracker } from '../src/game/racePath';
+import { buildPath, findCrossings, LapTracker } from '../src/game/racePath';
 import { TRACKS } from '../src/config/tracks';
 import { RaceBotDriver } from '../src/ai/RaceBotDriver';
 import { CarSim } from '../src/game/CarSim';
@@ -9,6 +9,7 @@ describe('track layouts', () => {
   for (const track of TRACKS) {
     describe(track.name, () => {
       const path = buildPath(track.controlPoints);
+      const crossings = findCrossings(path, track.roadWidth);
 
       it('stays inside the world with scenery margin', () => {
         for (const p of path.pts) {
@@ -19,15 +20,28 @@ describe('track layouts', () => {
         }
       });
 
-      it('never overlaps itself (no two far-apart sections share asphalt)', () => {
+      it('never overlaps itself outside declared bridge crossings', () => {
         const n = path.pts.length;
         for (let i = 0; i < n; i++) {
           for (let j = i + 30; j < n; j++) {
             const circular = Math.min(j - i, n - (j - i));
             if (circular < 30) continue;
             const d = Math.hypot(path.pts[i].x - path.pts[j].x, path.pts[i].y - path.pts[j].y);
-            expect(d, `samples ${i} and ${j} too close`).toBeGreaterThan(track.roadWidth + 20);
+            if (d > track.roadWidth + 20) continue;
+            // Close approach is only legal right at a bridge crossing.
+            const mx = (path.pts[i].x + path.pts[j].x) / 2;
+            const my = (path.pts[i].y + path.pts[j].y) / 2;
+            const nearCrossing = crossings.some((c) => Math.hypot(c.x - mx, c.y - my) < track.roadWidth * 2.2);
+            expect(nearCrossing, `samples ${i} and ${j} overlap away from any crossing`).toBe(true);
           }
+        }
+      });
+
+      it('shortcut cuts stay within the lap tracker search window', () => {
+        for (const sc of track.shortcuts ?? []) {
+          const skipped = (sc.to - sc.from) * 18;
+          expect(skipped).toBeGreaterThan(0);
+          expect(skipped, 'shortcut skips too far for nearestIndex window').toBeLessThan(55);
         }
       });
 
@@ -54,4 +68,28 @@ describe('track layouts', () => {
       });
     });
   }
+
+  it('only the crossover track has a bridge crossing — exactly one', () => {
+    for (const track of TRACKS) {
+      const crossings = findCrossings(buildPath(track.controlPoints), track.roadWidth);
+      expect(crossings.length, track.name).toBe(track.id === 'crossover-gp' ? 1 : 0);
+    }
+  });
+
+  it('airborne cars fly straight and land steerable', () => {
+    const stats = { ...CAR_CLASSES[1].base };
+    const car = new CarSim(1, { name: 't', isPlayer: true, getInput: () => ({ steer: 1, throttle: 1, boost: false }) }, stats, 0xffffff, []);
+    car.spawnAt(0, 0, 0);
+    car.speed = 300;
+    car.vx = 300;
+    car.vy = 0;
+    car.launch(0.5);
+    const h0 = car.heading;
+    for (let t = 0; t < 0.5; t += 1 / 60) car.update(1 / 60, { steer: 1, throttle: 1, boost: false });
+    expect(car.heading).toBe(h0); // no steering mid-air
+    expect(car.x).toBeGreaterThan(120); // momentum carried it forward
+    expect(car.airTimer).toBeLessThanOrEqual(0.02);
+    car.update(0.1, { steer: 1, throttle: 1, boost: false });
+    expect(car.heading).toBeGreaterThan(h0); // grounded again, steering works
+  });
 });

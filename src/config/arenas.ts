@@ -19,6 +19,8 @@ export interface ArenaDef {
   hazards: { oil: number; cones: number; potholes: number };
   /** Reserved for tournament mode: ordered checkpoint list. */
   waypoints?: { x: number; y: number }[];
+  /** Pin the RACE button to a specific track instead of the env default. */
+  trackId?: string;
 }
 
 export const ARENAS: ArenaDef[] = [
@@ -65,6 +67,7 @@ export const ARENAS: ArenaDef[] = [
     id: 'city-night',
     name: 'City Streets — Night',
     type: 'arena',
+    trackId: 'crossover-gp',
     envId: 'city',
     size: 4000,
     unlockTrophies: 20,

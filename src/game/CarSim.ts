@@ -61,6 +61,10 @@ export class CarSim {
   overdriveTimer = 0;
   /** Race mode: boost burns fuel only (Nitro's nitros), no trail needed. */
   freeBoost = false;
+  /** Seconds of ramp-jump air time left; airborne cars fly ballistically. */
+  airTimer = 0;
+  /** Total duration of the current jump (for the arc animation). */
+  airTotal = 0;
   /** Drivetrain identity ('petrol' | 'gas' | 'electric') — drives visuals. */
   fuelId = 'petrol';
   /** Rank in the round leaderboard, updated by the arena. */
@@ -110,6 +114,17 @@ export class CarSim {
 
   update(dt: number, input: DriverInput): void {
     if (!this.alive) return;
+
+    // Airborne after a ramp: ballistic flight — no steering, no drag,
+    // just carried by momentum until the wheels touch down.
+    if (this.airTimer > 0) {
+      this.airTimer -= dt;
+      this.boosting = false;
+      this.fuel = Math.max(0, this.fuel - FUEL_DRAIN * dt);
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      return;
+    }
 
     const s = this.stats;
     const outOfFuel = this.fuel <= 0;
@@ -172,6 +187,12 @@ export class CarSim {
     }
     const maxPoints = Math.floor(this.trailLimit);
     while (this.trail.length > maxPoints) this.trail.shift();
+  }
+
+  /** Ramp launch: fly for `seconds`, immune to ground hazards. */
+  launch(seconds: number): void {
+    this.airTimer = Math.max(this.airTimer, seconds);
+    this.airTotal = this.airTimer;
   }
 
   spinOut(): void {

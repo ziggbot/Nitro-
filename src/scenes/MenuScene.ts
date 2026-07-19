@@ -10,7 +10,7 @@ import { unlockedArenas } from '../meta/Unlocks';
 import { bodyStyle, clearScene, fitToScreen, formatMs, isNarrow, makeButton, makePanel, titleStyle } from '../ui/widgets';
 import { decodeGhost, type GhostData } from '../game/ghost';
 import { FUELS } from '../config/fuels';
-import { trackForEnv } from '../config/tracks';
+import { trackForArena } from '../config/tracks';
 
 export class MenuScene extends Phaser.Scene {
   private save!: SaveData;
@@ -85,7 +85,7 @@ export class MenuScene extends Phaser.Scene {
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
     const play = makeButton(this, 480, 386, 260, 46, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    const raceTrack = trackForEnv(ARENAS[this.arenaIndex].envId);
+    const raceTrack = trackForArena(ARENAS[this.arenaIndex]);
     makeButton(this, 480, 432, 260, 40, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
     makeButton(this, 410, 474, 130, 34, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
     makeButton(this, 550, 474, 130, 34, '🔧 GARAGE', () => this.scene.start('garage'));
@@ -139,7 +139,7 @@ export class MenuScene extends Phaser.Scene {
     const unlocked = unlockedArenas(this.save).includes(ARENAS[this.arenaIndex].id);
     const play = makeButton(this, 210, 428, 336, 42, '▶  ARENA', () => this.startRun(), PALETTE.lime);
     play.setEnabled(unlocked);
-    const raceTrack = trackForEnv(ARENAS[this.arenaIndex].envId);
+    const raceTrack = trackForArena(ARENAS[this.arenaIndex]);
     makeButton(this, 210, 470, 336, 36, `🏁 RACE — ${raceTrack.name}`, () => this.scene.start('race', { trackId: raceTrack.id }), PALETTE.amber);
     makeButton(this, 123, 508, 162, 32, '👥 FRIENDS', () => this.scene.start('lobby', { mode: 'host' }), PALETTE.violet);
     makeButton(this, 297, 508, 162, 32, '🔧 GARAGE', () => this.scene.start('garage'));
@@ -163,7 +163,7 @@ export class MenuScene extends Phaser.Scene {
 
   /** Race options: per-track blackouts + global weapons toggle. */
   private buildRaceToggles(cx: number, y: number, w: number, h: number): void {
-    const track = trackForEnv(ARENAS[this.arenaIndex].envId);
+    const track = trackForArena(ARENAS[this.arenaIndex]);
     const blackoutOn = this.save.blackoutTracks[track.id] ?? false;
     const weaponsOn = this.save.shootingEnabled;
 
