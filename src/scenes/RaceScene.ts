@@ -198,16 +198,23 @@ export class RaceScene extends Phaser.Scene {
     this.drawTrack();
     this.spawnTrackside();
 
-    // Grid: two columns behind the start line, facing along the track.
+    // Grid: staggered two-wide slots walked back along the centerline, so
+    // rows sit on the road even through a curve — and far enough apart
+    // that the pack doesn't pile up the instant the lights go green.
     const startIdx = 0;
     const n = this.path.pts.length;
     const startPt = this.path.pts[startIdx];
-    const nextPt = this.path.pts[4 % n];
-    const startAngle = Math.atan2(nextPt.y - startPt.y, nextPt.x - startPt.x);
-    const backX = -Math.cos(startAngle);
-    const backY = -Math.sin(startAngle);
-    const sideX = Math.cos(startAngle + Math.PI / 2);
-    const sideY = Math.sin(startAngle + Math.PI / 2);
+    /** Path sample index `dist` px behind the start line. */
+    const idxBehind = (dist: number): number => {
+      let i = startIdx;
+      let acc = 0;
+      while (acc < dist) {
+        const j = (i - 1 + n) % n;
+        acc += Math.hypot(this.path.pts[i].x - this.path.pts[j].x, this.path.pts[i].y - this.path.pts[j].y);
+        i = j;
+      }
+      return i;
+    };
 
     const classDef = CAR_CLASSES.find((c) => c.id === this.save.selectedCar) ?? CAR_CLASSES[0];
     const playerDriver = new PlayerDriver(this, 'YOU');
@@ -240,8 +247,14 @@ export class RaceScene extends Phaser.Scene {
       const spec = roster[slot];
       const row = Math.floor(slot / 2);
       const col = slot % 2 === 0 ? -1 : 1;
-      const gx = startPt.x + backX * (60 + row * 70) + sideX * col * 42;
-      const gy = startPt.y + backY * (60 + row * 70) + sideY * col * 42;
+      // F1-style stagger: the right column sits half a row further back.
+      const back = 90 + row * 150 + (col > 0 ? 70 : 0);
+      const gi = idxBehind(back);
+      const gp = this.path.pts[gi];
+      const ga = this.path.pts[(gi + 3) % n];
+      const gridAngle = Math.atan2(ga.y - gp.y, ga.x - gp.x);
+      const gx = gp.x + Math.cos(gridAngle + Math.PI / 2) * col * 55;
+      const gy = gp.y + Math.sin(gridAngle + Math.PI / 2) * col * 55;
 
       let driver: Driver;
       let stats;
@@ -264,7 +277,7 @@ export class RaceScene extends Phaser.Scene {
       const car = new CarSim(slot + 1, driver, stats, fuel.color, []);
       car.freeBoost = true; // race mode: boost burns fuel only, Nitro style
       car.fuelId = fuel.id;
-      car.spawnAt(gx, gy, startAngle);
+      car.spawnAt(gx, gy, gridAngle);
 
       const sprite = this.add.image(0, 0, fuel.texture).setScale(CAR_SCALE).setTint(fuel.color);
       const label = this.add
