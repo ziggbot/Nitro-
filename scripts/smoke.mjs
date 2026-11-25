@@ -10,7 +10,7 @@ import { chromium } from 'playwright-core';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:4173';
 const OUT = process.env.OUT_DIR ?? '.';
-const EXE = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const EXE = process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium';
 
 const browser = await chromium.launch({
   executablePath: EXE,
@@ -26,6 +26,10 @@ page.on('console', (msg) => {
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.waitForTimeout(3000);
+await page.screenshot({ path: `${OUT}/0-intro.png` });
+// Skip the pixel-art intro (any input after its 600ms guard).
+await page.mouse.click(640, 400);
+await page.waitForTimeout(1500);
 await page.screenshot({ path: `${OUT}/1-menu.png` });
 
 // Click PLAY. Wide menu design is 960x560 scaled to fit (cap 1.2):
@@ -69,6 +73,9 @@ const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, ha
 mobile.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
 await mobile.goto(BASE, { waitUntil: 'networkidle' });
 await mobile.waitForTimeout(2500);
+// Skip the intro, then land on the menu.
+await mobile.touchscreen.tap(195, 400);
+await mobile.waitForTimeout(1500);
 await mobile.screenshot({ path: `${OUT}/m1-menu.png` });
 // ARENA button in narrow design (420x852): (210,404) → screen ≈ (195,402).
 await mobile.touchscreen.tap(195, 402);
@@ -84,7 +91,11 @@ const failures = [];
 if (errors.length) failures.push(`page errors: ${errors.slice(0, 5).join(' | ')}`);
 if (!before) failures.push('arena/player never appeared — PLAY click failed?');
 if (before && after) {
-  if (after.fuel >= before.fuel) failures.push('fuel did not drain — simulation frozen?');
+  // Fuel can be back at full if the player just ate orbs — a frozen sim
+  // shows no fuel drain AND no score/trail growth.
+  if (after.fuel >= before.fuel && after.score === before.score && after.trailPts <= before.trailPts) {
+    failures.push('no fuel drain, score or trail growth — simulation frozen?');
+  }
   if (after.x === before.x && after.y === before.y) failures.push('player never moved');
   if (after.aliveCars < 2) failures.push('bots missing from arena');
   if (after.botTravel === 0) failures.push('no bot has driven anywhere');

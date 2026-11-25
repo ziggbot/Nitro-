@@ -49,7 +49,7 @@ export class BootScene extends Phaser.Scene {
     this.makeCrate();
     this.makeAwning();
     for (const envId of Object.keys(ENV_PALETTES)) this.makeFloor(envId);
-    this.scene.start('menu');
+    this.scene.start('intro');
   }
 
   /** Soft radial glow drawn behind a pickup icon, in the same texture. */
