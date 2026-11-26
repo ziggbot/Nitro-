@@ -751,6 +751,9 @@ export class ArenaScene extends Phaser.Scene {
     const g = this.trailGfx;
     g.clear();
     const now = this.time.now;
+    // Daylight floors are bright — glowing trails wash out on them, so
+    // every trail rides on a dark underlay band that guarantees contrast.
+    const day = !this.arena.night;
     for (const car of this.cars) {
       if (!car.alive || car.trail.length < 2) continue;
       const pts = car.trail;
@@ -770,14 +773,21 @@ export class ArenaScene extends Phaser.Scene {
         if (fuel.flicker) alphaScale *= 0.65 + 0.35 * Math.sin(now * 0.02 + i * 0.9);
         // Gas trails ride on a wide soft smoke streak.
         if (fuel.smoke) {
-          g.lineStyle(24 * widthMult, 0x9a9aa2, 0.09 * alphaScale);
+          g.lineStyle(24 * widthMult, day ? 0x3a3a44 : 0x9a9aa2, (day ? 0.16 : 0.09) * alphaScale);
           g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
         }
-        // Outer glow pass.
-        g.lineStyle(15 * widthMult, color, 0.16 * alphaScale);
-        g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
+        if (day) {
+          // Dark outline band: the deadly edge reads on any bright floor.
+          g.lineStyle(11 * widthMult, 0x0c0e16, Math.min(1, 0.74 * alphaScale));
+          g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
+        } else {
+          // Outer glow pass (night floors are dark enough already).
+          g.lineStyle(15 * widthMult, color, 0.16 * alphaScale);
+          g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
+        }
         // Bright core.
-        g.lineStyle(5.5 * widthMult, color, Math.min(1, 0.5 + 0.45 * (i / n)) * alphaScale);
+        const coreAlpha = Math.min(1, (day ? 0.65 : 0.5) + 0.45 * (i / n)) * alphaScale;
+        g.lineStyle(5.5 * widthMult, color, coreAlpha);
         g.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y);
         // Player-only white filament makes YOUR trail unmistakable.
         if (isPlayer) {
