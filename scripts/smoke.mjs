@@ -27,14 +27,24 @@ page.on('console', (msg) => {
 await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.waitForTimeout(3000);
 await page.screenshot({ path: `${OUT}/0-intro.png` });
-// Skip the pixel-art intro (any input after its 600ms guard).
-await page.mouse.click(640, 400);
-await page.waitForTimeout(1500);
+// Skip the pixel-art intro: tap until the menu scene is live (the skip
+// listener arms 600ms after a possibly slow intro boot).
+for (let i = 0; i < 8; i++) {
+  const onMenu = await page.evaluate(() => window.__game?.scene.isActive('menu'));
+  if (onMenu) break;
+  await page.mouse.click(640, 400);
+  await page.waitForTimeout(900);
+}
+await page.waitForTimeout(600);
 await page.screenshot({ path: `${OUT}/1-menu.png` });
 
-// Click PLAY. Wide menu design is 960x560 scaled to fit (cap 1.2):
-// at 1280x800 → scale 1.2, offset (64,64), PLAY at design (480,392).
-await page.mouse.click(640, 534);
+// Two-step flow: tap the ARENA mode card on home, then PLAY ARENA in the
+// setup view. Wide design 960x560 at 1280x800 → scale 1.2, offset (64,64):
+// card center (282,240) → (402,352); PLAY (480,412) → (640,558).
+await page.mouse.click(402, 352);
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${OUT}/1b-arena-setup.png` });
+await page.mouse.click(640, 558);
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}/2-arena.png` });
 
@@ -73,12 +83,21 @@ const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, ha
 mobile.on('pageerror', (e) => errors.push('mobile pageerror: ' + e.message));
 await mobile.goto(BASE, { waitUntil: 'networkidle' });
 await mobile.waitForTimeout(2500);
-// Skip the intro, then land on the menu.
-await mobile.touchscreen.tap(195, 400);
-await mobile.waitForTimeout(1500);
+// Skip the intro, then land on the menu (poll — slow boot arms the skip late).
+for (let i = 0; i < 8; i++) {
+  const onMenu = await mobile.evaluate(() => window.__game?.scene.isActive('menu'));
+  if (onMenu) break;
+  await mobile.touchscreen.tap(195, 700);
+  await mobile.waitForTimeout(900);
+}
+await mobile.waitForTimeout(600);
 await mobile.screenshot({ path: `${OUT}/m1-menu.png` });
-// ARENA button in narrow design (420x852): (210,404) → screen ≈ (195,402).
-await mobile.touchscreen.tap(195, 402);
+// Narrow home design 420x760 at 390x844 → scale 0.929, offset (0,69):
+// ARENA card (210,232) → (195,285); setup PLAY (210,412) → (195,452).
+await mobile.touchscreen.tap(195, 285);
+await mobile.waitForTimeout(800);
+await mobile.screenshot({ path: `${OUT}/m1b-arena-setup.png` });
+await mobile.touchscreen.tap(195, 452);
 await mobile.waitForTimeout(2500);
 await mobile.screenshot({ path: `${OUT}/m2-arena.png` });
 

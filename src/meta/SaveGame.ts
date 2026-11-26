@@ -25,6 +25,8 @@ export interface SaveData {
   selectedTrail: string;
   selectedFuel: string;
   selectedArena: string;
+  /** Last race track chosen in the RACE setup view. */
+  selectedTrack: string;
   /** Fireball weapons in races (front-page toggle). */
   shootingEnabled: boolean;
   /** Per-track blackout toggle; wasteland-gp defaults on. */
@@ -68,6 +70,7 @@ export function defaultSave(): SaveData {
     selectedTrail: 'flame',
     selectedFuel: 'petrol',
     selectedArena: 'city-day',
+    selectedTrack: 'city-gp',
     shootingEnabled: true,
     blackoutTracks: { 'wasteland-gp': true },
     upgrades: {},

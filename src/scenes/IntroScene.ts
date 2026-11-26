@@ -43,6 +43,42 @@ const CAR_ROWS = [
 const FLAME_A = ['..ff....', 'ffFFff..', 'fFFFFfff', 'ffFFff..', '..ff....'];
 const FLAME_B = ['....ff..', '..fFFfff', 'ffFFFFf.', '..fFFfff', '....ff..'];
 
+/** Create the NITRO.IO pixel-font glyph textures (idempotent). */
+export function ensurePixelLogo(scene: Phaser.Scene): void {
+  if (scene.textures.exists('px-glyph-N')) return;
+  for (const [ch, rows] of Object.entries(GLYPHS)) {
+    const key = `px-glyph-${ch === '.' ? 'dot' : ch}`;
+    const canvas = scene.textures.createCanvas(key, 7, 9);
+    if (!canvas) continue;
+    const ctx = canvas.getContext();
+    rows.forEach((row, y) => {
+      [...row].forEach((bit, x) => {
+        if (bit !== '1') return;
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(x + 1, y + 1, 1, 1); // shadow offset
+      });
+    });
+    rows.forEach((row, y) => {
+      [...row].forEach((bit, x) => {
+        if (bit !== '1') return;
+        ctx.fillStyle = y >= 5 ? '#c8861e' : '#ffd24a';
+        ctx.fillRect(x, y, 1, 1);
+      });
+    });
+    canvas.refresh();
+    scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+  }
+}
+
+/** Lay out the NITRO.IO logo in pixel glyphs; returns the images. */
+export function drawPixelLogo(scene: Phaser.Scene, cx: number, y: number, scale: number): Phaser.GameObjects.Image[] {
+  ensurePixelLogo(scene);
+  const word = 'NITRO.IO';
+  const letterW = 6 * scale;
+  const x0 = cx - (word.length * letterW) / 2 + letterW / 2;
+  return [...word].map((ch, i) => scene.add.image(x0 + i * letterW, y, `px-glyph-${ch === '.' ? 'dot' : ch}`).setScale(scale));
+}
+
 export class IntroScene extends Phaser.Scene {
   private roadTile?: Phaser.GameObjects.TileSprite;
   private skylineTile?: Phaser.GameObjects.TileSprite;
@@ -196,11 +232,14 @@ export class IntroScene extends Phaser.Scene {
       },
     });
 
-    // Skip on any input (after a beat, so a stray tap doesn't eat it).
-    this.time.delayedCall(600, () => {
-      this.input.once('pointerdown', () => this.finish());
-      this.input.keyboard?.once('keydown', () => this.finish());
-    });
+    // Skip on any input. Armed by wall-clock (not the scene clock, which
+    // crawls on slow devices) with a short guard against stray taps.
+    const armedAt = Date.now() + 600;
+    const trySkip = (): void => {
+      if (Date.now() >= armedAt) this.finish();
+    };
+    this.input.on('pointerdown', trySkip);
+    this.input.keyboard?.on('keydown', trySkip);
     this.time.delayedCall(11_000, () => this.finish());
   }
 
@@ -246,29 +285,8 @@ export class IntroScene extends Phaser.Scene {
     this.pixelTexture('px-flame-a', FLAME_A, { f: '#ff8a1f', F: '#fff6c0' });
     this.pixelTexture('px-flame-b', FLAME_B, { f: '#ff5a1f', F: '#ffd24a' });
 
-    // Glyphs: gold face, darker lower third, black drop shadow.
-    for (const [ch, rows] of Object.entries(GLYPHS)) {
-      const key = `px-glyph-${ch === '.' ? 'dot' : ch}`;
-      const canvas = this.textures.createCanvas(key, 7, 9);
-      if (!canvas) continue;
-      const ctx = canvas.getContext();
-      rows.forEach((row, y) => {
-        [...row].forEach((bit, x) => {
-          if (bit !== '1') return;
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(x + 1, y + 1, 1, 1); // shadow offset
-        });
-      });
-      rows.forEach((row, y) => {
-        [...row].forEach((bit, x) => {
-          if (bit !== '1') return;
-          ctx.fillStyle = y >= 5 ? '#c8861e' : '#ffd24a';
-          ctx.fillRect(x, y, 1, 1);
-        });
-      });
-      canvas.refresh();
-      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
-    }
+    // Glyphs: shared with the menu's logo.
+    ensurePixelLogo(this);
 
     // Sun: striped synthwave disc.
     const sun = this.textures.createCanvas('px-sun', 41, 41);
