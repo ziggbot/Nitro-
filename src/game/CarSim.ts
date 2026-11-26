@@ -67,6 +67,8 @@ export class CarSim {
   airTotal = 0;
   /** Drivetrain identity ('petrol' | 'gas' | 'electric') — drives visuals. */
   fuelId = 'petrol';
+  /** Speed multiplier while slowTimer runs (race mode is gentler off-road). */
+  slowFactor = 0.55;
   /** Rank in the round leaderboard, updated by the arena. */
   rank = 0;
 
@@ -150,7 +152,7 @@ export class CarSim {
     }
 
     // Throttle → target speed. Engine dies without fuel: coast to a stop.
-    const slowMult = this.slowTimer > 0 ? 0.55 : 1;
+    const slowMult = this.slowTimer > 0 ? this.slowFactor : 1;
     if (this.slowTimer > 0) this.slowTimer -= dt;
     if (this.overdriveTimer > 0) this.overdriveTimer -= dt;
     // Overdrive and boost don't stack — the stronger one wins.

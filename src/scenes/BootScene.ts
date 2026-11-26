@@ -373,29 +373,72 @@ export class BootScene extends Phaser.Scene {
     });
   }
 
-  /** Steering-wheel base for the touch joystick (drawn white, tinted in HUD). */
+  /** Classic rally steering wheel: thick dark rubber rim, metal spokes. */
   private makeWheel(): void {
-    this.canvasTexture('wheel', 144, 144, (ctx) => {
-      const c = 72;
-      ctx.strokeStyle = '#ffffff';
-      // Rim.
-      ctx.lineWidth = 11;
+    this.canvasTexture('wheel', 160, 160, (ctx) => {
+      const c = 80;
+      // Rubber rim: thick dark ring with a subtle top-light and finger
+      // grips marked as slightly lighter notches.
+      ctx.strokeStyle = '#15171d';
+      ctx.lineWidth = 24;
       ctx.beginPath();
       ctx.arc(c, c, 62, 0, Math.PI * 2);
       ctx.stroke();
-      // Three spokes.
-      ctx.lineWidth = 7;
-      for (const a of [Math.PI / 2, Math.PI / 2 + (Math.PI * 2) / 3, Math.PI / 2 - (Math.PI * 2) / 3]) {
+      ctx.strokeStyle = '#2e3138';
+      ctx.lineWidth = 15;
+      ctx.beginPath();
+      ctx.arc(c, c, 62, 0, Math.PI * 2);
+      ctx.stroke();
+      // Top-light sheen on the upper rim.
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(c, c, 66, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      // Grip notches around the rim.
+      ctx.strokeStyle = '#43464e';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
         ctx.beginPath();
-        ctx.moveTo(c + Math.cos(a) * 14, c + Math.sin(a) * 14);
-        ctx.lineTo(c + Math.cos(a) * 57, c + Math.sin(a) * 57);
+        ctx.moveTo(c + Math.cos(a) * 54, c + Math.sin(a) * 54);
+        ctx.lineTo(c + Math.cos(a) * 70, c + Math.sin(a) * 70);
         ctx.stroke();
       }
-      // Hub.
-      ctx.fillStyle = '#ffffff';
+      // Three brushed-metal spokes (down, and two up at ±60°).
+      for (const a of [Math.PI / 2, Math.PI / 2 + (Math.PI * 2) / 3, Math.PI / 2 - (Math.PI * 2) / 3]) {
+        const gx = Math.cos(a + Math.PI / 2);
+        const gy = Math.sin(a + Math.PI / 2);
+        const grad = ctx.createLinearGradient(c - gx * 7, c - gy * 7, c + gx * 7, c + gy * 7);
+        grad.addColorStop(0, '#6a6e78');
+        grad.addColorStop(0.5, '#c8ccd6');
+        grad.addColorStop(1, '#595d66');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 13;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(c + Math.cos(a) * 12, c + Math.sin(a) * 12);
+        ctx.lineTo(c + Math.cos(a) * 56, c + Math.sin(a) * 56);
+        ctx.stroke();
+      }
+      // Metal hub with a dark center cap.
+      const hub = ctx.createRadialGradient(c - 5, c - 6, 3, c, c, 20);
+      hub.addColorStop(0, '#d8dce6');
+      hub.addColorStop(0.6, '#8a8e98');
+      hub.addColorStop(1, '#4a4e58');
+      ctx.fillStyle = hub;
       ctx.beginPath();
-      ctx.arc(c, c, 15, 0, Math.PI * 2);
+      ctx.arc(c, c, 19, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#1c1e24';
+      ctx.beginPath();
+      ctx.arc(c, c, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#5a5e68';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c, c, 10, 0, Math.PI * 2);
+      ctx.stroke();
     });
   }
 

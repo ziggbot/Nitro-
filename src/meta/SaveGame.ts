@@ -29,6 +29,8 @@ export interface SaveData {
   selectedTrack: string;
   /** Fireball weapons in races (front-page toggle). */
   shootingEnabled: boolean;
+  /** Track-edge fences in races keep cars on the road (menu toggle). */
+  fencesEnabled: boolean;
   /** Per-track blackout toggle; wasteland-gp defaults on. */
   blackoutTracks: Record<string, boolean>;
   /** upgrades[carId][upgradeId] = level */
@@ -72,6 +74,7 @@ export function defaultSave(): SaveData {
     selectedArena: 'city-day',
     selectedTrack: 'city-gp',
     shootingEnabled: true,
+    fencesEnabled: true,
     blackoutTracks: { 'wasteland-gp': true },
     upgrades: {},
     lifetime: {

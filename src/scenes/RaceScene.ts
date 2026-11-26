@@ -134,6 +134,9 @@ export class RaceScene extends Phaser.Scene {
   private crossings: Crossing[] = [];
   /** Index half-width of a bridge zone in path samples. */
   private crossingSpan = 9;
+  /** Track-edge fence keeps cars on the road (menu toggle, default on). */
+  private fenceOn = true;
+  private lastFenceHitAt = 0;
 
   // Wasteland blackouts: pitch black except headlights, exhaust, outline.
   private blackoutWindows: { start: number; end: number }[] = [];
@@ -198,6 +201,8 @@ export class RaceScene extends Phaser.Scene {
     this.crossings = findCrossings(this.path, this.track.roadWidth);
     // Weapons: front-page toggle; off in network races (not synced yet).
     this.shootingOn = this.save.shootingEnabled && !data.network;
+    this.fenceOn = this.save.fencesEnabled;
+    this.lastFenceHitAt = 0;
   }
 
   /** Blackouts follow the front-page per-track toggle. */
@@ -216,6 +221,7 @@ export class RaceScene extends Phaser.Scene {
     this.drawScenery();
     this.drawShortcuts();
     this.drawTrack();
+    if (this.fenceOn) this.drawFences();
     this.placePadsAndRamps();
     this.drawBridges();
     this.spawnTrackside();
@@ -298,6 +304,7 @@ export class RaceScene extends Phaser.Scene {
       const fuel = spec.fuel;
       const car = new CarSim(slot + 1, driver, stats, fuel.color, []);
       car.freeBoost = true; // race mode: boost burns fuel only, Nitro style
+      car.slowFactor = 0.78; // going off-road costs, but far less than arena
       car.fuelId = fuel.id;
       car.spawnAt(gx, gy, gridAngle);
 
@@ -1049,6 +1056,63 @@ export class RaceScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Low guard fence along both road edges: rail line + posts, with gaps
+   * at shortcut mouths so the cuts stay drivable. Drawn below the bridge
+   * deck so the crossover's overpass covers it.
+   */
+  private drawFences(): void {
+    const pts = this.path.pts;
+    const n = pts.length;
+    const off = this.track.roadWidth / 2 + 14;
+    const day = this.track.daylight;
+    const railColor = day ? 0xe8e8ec : 0xff3b9e;
+    const postColor = day ? 0xb02020 : 0x8a1a5c;
+    const g = this.add.graphics().setDepth(2.2);
+
+    const nearShortcut = (x: number, y: number): boolean =>
+      this.shortcutLines.length > 0 && this.distToShortcut(x, y) < this.shortcutHalf + 70;
+
+    for (const side of [-1, 1]) {
+      let penDown = false;
+      g.lineStyle(3, railColor, day ? 0.85 : 0.7);
+      g.beginPath();
+      for (let i = 0; i <= n; i += 2) {
+        const idx = i % n;
+        const a = pts[idx];
+        const b = pts[(idx + 2) % n];
+        const t = Math.atan2(b.y - a.y, b.x - a.x);
+        const x = a.x + Math.cos(t + Math.PI / 2) * off * side;
+        const y = a.y + Math.sin(t + Math.PI / 2) * off * side;
+        if (nearShortcut(x, y)) {
+          if (penDown) g.strokePath();
+          penDown = false;
+          continue;
+        }
+        if (!penDown) {
+          g.beginPath();
+          g.moveTo(x, y);
+          penDown = true;
+        } else {
+          g.lineTo(x, y);
+        }
+      }
+      if (penDown) g.strokePath();
+
+      // Posts every few samples.
+      g.fillStyle(postColor, day ? 0.95 : 0.85);
+      for (let i = 0; i < n; i += 6) {
+        const a = pts[i];
+        const b = pts[(i + 2) % n];
+        const t = Math.atan2(b.y - a.y, b.x - a.x);
+        const x = a.x + Math.cos(t + Math.PI / 2) * off * side;
+        const y = a.y + Math.sin(t + Math.PI / 2) * off * side;
+        if (nearShortcut(x, y)) continue;
+        g.fillRect(x - 3, y - 3, 6, 6);
+      }
+    }
+  }
+
   /** Which level an on-track sample index is on near a crossing: 1 = bridge, 0 = under, -1 = away. */
   private levelAtIdx(idx: number): number {
     const n = this.path.pts.length;
@@ -1237,18 +1301,45 @@ export class RaceScene extends Phaser.Scene {
         }
       }
 
-      // Off-road: heavy slowdown outside the asphalt — unless the car is
+      // Off-road: slowdown outside the asphalt — unless the car is
       // threading a shortcut or flying off a ramp.
       const centerDist = entry.tracker.distToCenter(car.x, car.y);
-      const onRoad =
-        centerDist < this.track.roadWidth / 2 + 14 ||
-        car.airTimer > 0 ||
-        (this.shortcutLines.length > 0 && this.distToShortcut(car.x, car.y) < this.shortcutHalf + 8);
+      const onShortcut = this.shortcutLines.length > 0 && this.distToShortcut(car.x, car.y) < this.shortcutHalf + 8;
+      const onRoad = centerDist < this.track.roadWidth / 2 + 14 || car.airTimer > 0 || onShortcut;
       if (!onRoad) {
         car.slowTimer = Math.max(car.slowTimer, 0.15);
         if (entry === this.player && !this.offRoad) sfx.bump();
       }
       if (entry === this.player) this.offRoad = !onRoad;
+
+      // Track-edge fence: a low barrier bounces cars back onto the road.
+      // Only while racing — the lap tracker (which anchors the clamp)
+      // doesn't advance during the countdown. Shortcut mouths stay open
+      // and ramp jumps sail clean over it.
+      if (this.fenceOn && racing && car.airTimer <= 0 && !onShortcut && !entry.netId) {
+        const limit = this.track.roadWidth / 2 + 10;
+        const p = this.path.pts[entry.tracker.idx];
+        const fdx = car.x - p.x;
+        const fdy = car.y - p.y;
+        const fd = Math.hypot(fdx, fdy);
+        if (fd > limit) {
+          const nx = fdx / fd;
+          const ny = fdy / fd;
+          car.x = p.x + nx * limit;
+          car.y = p.y + ny * limit;
+          const dot = car.vx * nx + car.vy * ny;
+          if (dot > 0) {
+            car.vx -= 1.5 * dot * nx;
+            car.vy -= 1.5 * dot * ny;
+            car.speed *= 0.85;
+            if (entry === this.player && time - this.lastFenceHitAt > 300) {
+              this.lastFenceHitAt = time;
+              sfx.bump();
+              this.cameras.main.shake(60, 0.003);
+            }
+          }
+        }
+      }
 
       // Boost pads and jump ramps (grounded cars only).
       if (car.airTimer <= 0 && racing) {

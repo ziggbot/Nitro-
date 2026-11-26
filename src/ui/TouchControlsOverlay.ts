@@ -38,15 +38,14 @@ export class TouchControlsOverlay {
     const w = scene.scale.width;
     const h = scene.scale.height;
 
-    this.joyR = Phaser.Math.Clamp(Math.round(Math.min(w, h) * 0.14), 48, 68);
+    this.joyR = Phaser.Math.Clamp(Math.round(Math.min(w, h) * 0.16), 56, 80);
     this.joyX = this.joyR + 26;
     this.joyY = h - this.joyR - 26;
 
     scene.add
       .image(this.joyX, this.joyY, 'wheel')
       .setDisplaySize(this.joyR * 2, this.joyR * 2)
-      .setTint(PALETTE.cyan)
-      .setAlpha(0.4)
+      .setAlpha(0.8)
       .setDepth(60);
     this.knob = scene.add
       .image(this.joyX, this.joyY, 'knob')

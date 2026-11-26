@@ -272,7 +272,7 @@ export class MenuScene extends Phaser.Scene {
       this.buildTrackSelector(cx, 215, selW, 180);
       this.add.text(cx, 322, 'PICK YOUR RIDE', bodyStyle(11, hexToCss(PALETTE.uiDim))).setOrigin(0.5);
       this.buildFuelPicker(cx, 352, narrow ? 118 : 128, 34);
-      this.buildRaceToggles(cx, 398, narrow ? 160 : 168, 30);
+      this.buildRaceToggles(cx, 398, narrow ? 122 : 150, 30);
       const track = TRACKS[this.trackIndex];
       makeButton(this, cx, 462, narrow ? 336 : 320, 52, '🏁  START RACE', () => {
         this.save.selectedTrack = track.id;
@@ -289,17 +289,18 @@ export class MenuScene extends Phaser.Scene {
 
   // ---------- Shared building blocks ----------
 
-  /** Race options: per-track blackouts + global weapons toggle. */
+  /** Race options: per-track blackouts, weapons, and the edge fence. */
   private buildRaceToggles(cx: number, y: number, w: number, h: number): void {
     const track = TRACKS[this.trackIndex];
     const blackoutOn = this.save.blackoutTracks[track.id] ?? false;
     const weaponsOn = this.save.shootingEnabled;
+    const fenceOn = this.save.fencesEnabled;
 
     const mk = (x: number, label: string, on: boolean, toggle: () => void): void => {
       const bg = this.add
         .rectangle(x, y, w, h, on ? 0x1a2a44 : PALETTE.uiPanel, 0.92)
         .setStrokeStyle(on ? 2.5 : 1.5, on ? PALETTE.lime : 0x445066);
-      this.add.text(x, y, label, bodyStyle(11, hexToCss(on ? PALETTE.lime : PALETTE.uiDim))).setOrigin(0.5);
+      this.add.text(x, y, label, bodyStyle(10, hexToCss(on ? PALETTE.lime : PALETTE.uiDim))).setOrigin(0.5);
       bg.setInteractive({ useHandCursor: true }).on('pointerup', (p: Phaser.Input.Pointer) => {
         if (p.getDistance() > 16) return;
         sfx.click();
@@ -309,11 +310,14 @@ export class MenuScene extends Phaser.Scene {
       });
     };
 
-    mk(cx - w / 2 - 6, `⚡ BLACKOUT ${blackoutOn ? 'ON' : 'OFF'}`, blackoutOn, () => {
+    mk(cx - w - 8, `⚡ BLACKOUT ${blackoutOn ? 'ON' : 'OFF'}`, blackoutOn, () => {
       this.save.blackoutTracks[track.id] = !blackoutOn;
     });
-    mk(cx + w / 2 + 6, `🔥 WEAPONS ${weaponsOn ? 'ON' : 'OFF'}`, weaponsOn, () => {
+    mk(cx, `🔥 WEAPONS ${weaponsOn ? 'ON' : 'OFF'}`, weaponsOn, () => {
       this.save.shootingEnabled = !weaponsOn;
+    });
+    mk(cx + w + 8, `🚧 FENCE ${fenceOn ? 'ON' : 'OFF'}`, fenceOn, () => {
+      this.save.fencesEnabled = !fenceOn;
     });
   }
 
