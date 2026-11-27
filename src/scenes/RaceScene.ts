@@ -351,7 +351,7 @@ export class RaceScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, size, size);
     cam.startFollow(this.player.view.container, false, 0.09, 0.09);
-    const zoom = Phaser.Math.Clamp(Math.min(this.scale.width, this.scale.height) / 900, 0.55, 1.15);
+    const zoom = Phaser.Math.Clamp(Math.min(this.scale.width, this.scale.height) / 900, 0.55, 1.15) * (this.track.zoom ?? 1);
     cam.setZoom(zoom);
     if (this.renderer.type === Phaser.WEBGL) {
       cam.postFX.addBloom(0xffffff, 1, 1, 1.1, 0.6);

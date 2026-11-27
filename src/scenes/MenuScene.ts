@@ -437,6 +437,8 @@ function trackBlurb(trackId: string): string {
       return 'Night switchback pretzel — toxic expert territory';
     case 'crossover-gp':
       return 'Night figure-8 over a neon bridge';
+    case 'retro-gp':
+      return "Original 1990 proportions — wide streets, small cars";
     default:
       return '';
   }

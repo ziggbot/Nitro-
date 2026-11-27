@@ -11,6 +11,8 @@ export interface TrackDef {
   /** Closed-loop control points, smoothed into the centerline spline. */
   controlPoints: { x: number; y: number }[];
   roadWidth: number;
+  /** Camera zoom multiplier — retro tracks pull the camera way out. */
+  zoom?: number;
   rewardMult: number;
   fuelPickups: number;
   barrels: number;
@@ -184,6 +186,37 @@ export const TRACKS: TrackDef[] = [
       { x: 2600, y: 2400 },
       { x: 1700, y: 1800 },
       { x: 900, y: 1500 },
+    ],
+  },
+  {
+    id: 'retro-gp',
+    name: "Retro City '90",
+    envId: 'city',
+    size: 5800,
+    laps: 2,
+    botCount: 5,
+    daylight: true,
+    // Original Nitro proportions: streets ~9 car-widths wide, camera
+    // pulled far out so the cars read small against big open asphalt.
+    roadWidth: 420,
+    zoom: 0.62,
+    rewardMult: 1.4,
+    fuelPickups: 12,
+    barrels: 3,
+    hazards: { oil: 6, cones: 10, potholes: 6 },
+    // Street-grid city blocks: long avenues, broad 90° junctions.
+    controlPoints: [
+      { x: 1000, y: 1000 },
+      { x: 2900, y: 850 },
+      { x: 4700, y: 1000 },
+      { x: 4950, y: 2400 },
+      { x: 4650, y: 3900 },
+      { x: 4750, y: 4850 },
+      { x: 3400, y: 4950 },
+      { x: 1900, y: 4750 },
+      { x: 1000, y: 4900 },
+      { x: 800, y: 3500 },
+      { x: 1050, y: 2300 },
     ],
   },
 ];
